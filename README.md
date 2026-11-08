@@ -1,4 +1,4 @@
-# JD musax — native Android foundation
+# JD musax — 1st ever Spotify alternative to overcome almost every hurdle (in progress)
 
 This is the first native Kotlin/Jetpack Compose foundation, not a completed feature-parity release.
 
