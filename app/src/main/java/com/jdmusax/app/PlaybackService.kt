@@ -10,19 +10,28 @@ import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
 import org.json.JSONArray
 import org.json.JSONObject
 
 class PlaybackService : MediaSessionService() {
     private var mediaSession: MediaSession? = null
     private val mainHandler = Handler(Looper.getMainLooper())
+    private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private var restorationComplete = false
     private val sessionPrefs by lazy {
         getSharedPreferences("playback_session", MODE_PRIVATE)
     }
 
     private val persistSession = object : Runnable {
         override fun run() {
-            mediaSession?.player?.let(::savePlaybackSession)
+            if (restorationComplete) {
+                mediaSession?.player?.let(::savePlaybackSession)
+            }
             mainHandler.postDelayed(this, SAVE_INTERVAL_MS)
         }
     }
@@ -34,7 +43,6 @@ class PlaybackService : MediaSessionService() {
             setHandleAudioBecomingNoisy(true)
         }
 
-        restorePlaybackSession(player)
         player.addListener(object : Player.Listener {
             override fun onEvents(player: Player, events: Player.Events) {
                 if (
@@ -46,46 +54,64 @@ class PlaybackService : MediaSessionService() {
                     events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED) ||
                     events.contains(Player.EVENT_PLAY_WHEN_READY_CHANGED)
                 ) {
-                    savePlaybackSession(player)
+                    if (restorationComplete) savePlaybackSession(player)
                 }
             }
         })
 
         mediaSession = MediaSession.Builder(this, player).build()
+        serviceScope.launch { restorePlaybackSession(player) }
         mainHandler.postDelayed(persistSession, SAVE_INTERVAL_MS)
     }
 
-    private fun restorePlaybackSession(player: ExoPlayer) {
-        val raw = sessionPrefs.getString(KEY_ITEMS, null) ?: return
-        runCatching {
-            val array = JSONArray(raw)
-            val items = (0 until array.length()).mapNotNull { index ->
-                val item = array.optJSONObject(index) ?: return@mapNotNull null
-                val uri = item.optString("uri").takeIf(String::isNotBlank)
-                    ?: return@mapNotNull null
-                val metadata = MediaMetadata.Builder()
-                    .setTitle(item.optString("title", "Unknown track"))
-                    .setArtist(item.optString("artist", "Unknown artist"))
-                    .setArtworkUri(item.optString("artwork").takeIf(String::isNotBlank)?.let(Uri::parse))
-                    .build()
-                MediaItem.Builder()
-                    .setMediaId(item.optString("id", uri))
-                    .setUri(uri)
-                    .setMediaMetadata(metadata)
-                    .build()
+    private suspend fun restorePlaybackSession(player: ExoPlayer) {
+        try {
+            val raw = sessionPrefs.getString(KEY_ITEMS, null) ?: return
+            runCatching {
+                val array = JSONArray(raw)
+                val repository = AudiusRepository()
+                val items = (0 until array.length()).mapNotNull { index ->
+                    val item = array.optJSONObject(index) ?: return@mapNotNull null
+                    val savedUri = item.optString("uri").takeIf(String::isNotBlank)
+                        ?: return@mapNotNull null
+                    val mediaId = item.optString("id").ifBlank { savedUri }
+                    val savedParsedUri = Uri.parse(savedUri)
+                    val isLocal = savedParsedUri.scheme == "content" || savedParsedUri.scheme == "file"
+
+                    // Audius CDN stream URLs may expire. Resolve the stable track ID again
+                    // whenever a saved remote queue is restored; keep local document URIs.
+                    val playableUri = if (isLocal || mediaId.startsWith("local:")) {
+                        savedUri
+                    } else {
+                        runCatching { repository.resolveStream(mediaId) }.getOrNull() ?: savedUri
+                    }
+
+                    val metadata = MediaMetadata.Builder()
+                        .setTitle(item.optString("title", "Unknown track"))
+                        .setArtist(item.optString("artist", "Unknown artist"))
+                        .setArtworkUri(item.optString("artwork").takeIf(String::isNotBlank)?.let(Uri::parse))
+                        .build()
+                    MediaItem.Builder()
+                        .setMediaId(mediaId)
+                        .setUri(playableUri)
+                        .setMediaMetadata(metadata)
+                        .build()
+                }
+                if (items.isNotEmpty()) {
+                    val index = sessionPrefs.getInt(KEY_INDEX, 0).coerceIn(items.indices)
+                    val position = sessionPrefs.getLong(KEY_POSITION, 0L).coerceAtLeast(0L)
+                    player.setMediaItems(items, index, position)
+                    player.shuffleModeEnabled = sessionPrefs.getBoolean(KEY_SHUFFLE, false)
+                    player.repeatMode = sessionPrefs.getInt(KEY_REPEAT, Player.REPEAT_MODE_OFF)
+                        .coerceIn(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL)
+                    player.prepare()
+                    player.pause()
+                }
+            }.onFailure {
+                sessionPrefs.edit().remove(KEY_ITEMS).apply()
             }
-            if (items.isNotEmpty()) {
-                val index = sessionPrefs.getInt(KEY_INDEX, 0).coerceIn(items.indices)
-                val position = sessionPrefs.getLong(KEY_POSITION, 0L).coerceAtLeast(0L)
-                player.setMediaItems(items, index, position)
-                player.shuffleModeEnabled = sessionPrefs.getBoolean(KEY_SHUFFLE, false)
-                player.repeatMode = sessionPrefs.getInt(KEY_REPEAT, Player.REPEAT_MODE_OFF)
-                    .coerceIn(Player.REPEAT_MODE_OFF, Player.REPEAT_MODE_ALL)
-                player.prepare()
-                player.pause()
-            }
-        }.onFailure {
-            sessionPrefs.edit().remove(KEY_ITEMS).apply()
+        } finally {
+            restorationComplete = true
         }
     }
 
@@ -137,8 +163,9 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         mainHandler.removeCallbacks(persistSession)
+        serviceScope.cancel()
         mediaSession?.run {
-            savePlaybackSession(player)
+            if (restorationComplete) savePlaybackSession(player)
             player.release()
             release()
         }
