@@ -513,9 +513,9 @@ private fun JDMusaxApp(
                 Column {
                     MiniPlayer(
                         nowPlaying, isPlaying, accent,
-                        onPrevious = { if (playbackIndex > 0) skipTo(playbackIndex - 1) else onPrevious() },
+                        onPrevious = onPrevious,
                         onToggle = onToggle,
-                        onNext = { if (playbackIndex >= 0 && playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() },
+                        onNext = onNext,
                         onOpen = { showNowPlaying = true }
                     )
                     NavigationBar(containerColor = palette.surface) {
@@ -544,8 +544,8 @@ private fun JDMusaxApp(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
                         isPlaying = isPlaying, palette = palette, accent = accent, speed = playbackSpeed,
                         sleepMinutes = sleepMinutes, onClose = { showNowPlaying = false }, onToggle = onToggle,
-                        onPrevious = { if (playbackIndex > 0) skipTo(playbackIndex - 1) else onPrevious() },
-                        onNext = { if (playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() },
+                        onPrevious = onPrevious,
+                        onNext = onNext,
                         onSelectTrack = { skipTo(it) },
                         onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
                         onSleepTimerChange = { sleepMinutes = it },
@@ -1020,11 +1020,11 @@ private fun NowPlayingScreen(
         }
         Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = onPrevious, enabled = currentIndex > 0) { Icon(Icons.Default.SkipPrevious, "Previous", tint = palette.text, modifier = Modifier.size(34.dp)) }
+            IconButton(onClick = onPrevious, enabled = queue.size > 1) { Icon(Icons.Default.SkipPrevious, "Previous", tint = palette.text, modifier = Modifier.size(34.dp)) }
             FilledIconButton(onClick = onToggle, modifier = Modifier.size(68.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent)) {
                 Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = Color.Black, modifier = Modifier.size(36.dp))
             }
-            IconButton(onClick = onNext, enabled = currentIndex < queue.lastIndex) { Icon(Icons.Default.SkipNext, "Next", tint = palette.text, modifier = Modifier.size(34.dp)) }
+            IconButton(onClick = onNext, enabled = queue.size > 1) { Icon(Icons.Default.SkipNext, "Next", tint = palette.text, modifier = Modifier.size(34.dp)) }
         }
         Spacer(Modifier.height(16.dp))
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
