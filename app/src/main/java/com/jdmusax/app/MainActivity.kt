@@ -495,7 +495,8 @@ private fun HomeScreen(
     onPlay: (Track) -> Unit,
     onToggleSave: (Track) -> Unit,
     onDownload: (Track) -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         ScreenHeader("JD musax", "MUSIC, WITHOUT THE NOISE.")
         CategoryPicker(category, onCategoryChange, accent)
@@ -551,7 +552,8 @@ private fun ExploreScreen(
     onPlay: (Track) -> Unit,
     onToggleSave: (Track) -> Unit,
     onDownload: (Track) -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { ScreenHeader("Explore", "TRENDING ON AUDIUS") }
@@ -586,7 +588,8 @@ private fun LibraryScreen(
     onToggleSave: (Track) -> Unit,
     onImport: (List<Track>) -> Unit,
     onDownload: (Track) -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val imported = uris.map { uri ->
@@ -647,6 +650,7 @@ private fun TrackContent(
     onToggleSave: (Track) -> Unit,
     onDownload: (Track) -> Unit
 ) {
+    val palette = LocalAppPalette.current
     when {
         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = accent)
@@ -690,8 +694,14 @@ private fun TrackRow(
     onToggleSave: () -> Unit,
     onDownload: () -> Unit
 ) {
+    val palette = LocalAppPalette.current
+    Surface(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(16.dp),
+        color = palette.surface
+    ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 7.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
@@ -700,12 +710,12 @@ private fun TrackRow(
             modifier = Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.DarkGray)
+                .background(palette.surfaceVariant)
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(track.title, color = Color.White, maxLines = 1, fontWeight = FontWeight.Medium)
-            Text(track.artist, color = Color.Gray, maxLines = 1, fontSize = 12.sp)
+            Text(track.title, color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold)
+            Text(track.artist, color = palette.muted, maxLines = 1, fontSize = 12.sp)
         }
         IconButton(onClick = onToggleSave) {
             Icon(
@@ -721,6 +731,7 @@ private fun TrackRow(
         }
         Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
     }
+    }
 }
 
 @Composable
@@ -731,11 +742,12 @@ private fun MiniPlayer(
     onPrevious: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(22.dp),
-        color = Color(0xFF1A1A1A)
+        color = palette.surfaceVariant
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 8.dp),
@@ -743,10 +755,10 @@ private fun MiniPlayer(
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             IconButton(onClick = onPrevious, enabled = track != null) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) Color.White else Color.DarkGray, modifier = Modifier.size(30.dp))
+                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
             }
             Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF080808)),
+                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(palette.surface),
                 contentAlignment = Alignment.Center
             ) {
                 if (track?.artwork != null) {
@@ -764,7 +776,7 @@ private fun MiniPlayer(
                 )
             }
             IconButton(onClick = onNext, enabled = track != null) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) Color.White else Color.DarkGray, modifier = Modifier.size(30.dp))
+                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
             }
         }
     }
