@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -27,15 +29,16 @@ class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
     fun getAccent(): String = prefs.getString("accent", "violet") ?: "violet"
-
     fun setAccent(value: String) {
         if (value in ACCENT_OPTIONS) prefs.edit().putString("accent", value).apply()
     }
-
     fun isDynamicThemeEnabled(): Boolean = prefs.getBoolean("dynamic_theme", false)
-
     fun setDynamicThemeEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("dynamic_theme", enabled).apply()
+    }
+    fun getAppearanceMode(): String = prefs.getString("appearance_mode", "dark") ?: "dark"
+    fun setAppearanceMode(mode: String) {
+        if (mode in APPEARANCE_MODES) prefs.edit().putString("appearance_mode", mode).apply()
     }
 
     companion object {
@@ -43,6 +46,7 @@ class SettingsStore(context: Context) {
             "violet", "indigo", "blue", "cyan", "teal", "mint",
             "green", "lime", "yellow", "orange", "red", "rose", "pink"
         )
+        val APPEARANCE_MODES = setOf("light", "dark", "amoled")
     }
 }
 
@@ -54,29 +58,57 @@ private val accentOptions = listOf(
     "pink" to "Pink"
 )
 
+private val appearanceOptions = listOf(
+    "light" to "Light",
+    "dark" to "Dark",
+    "amoled" to "AMOLED"
+)
+
 @Composable
 fun SettingsScreen(
     accentName: String,
     dynamicTheme: Boolean,
     onAccentChange: (String) -> Unit,
-    onDynamicThemeChange: (Boolean) -> Unit
+    onDynamicThemeChange: (Boolean) -> Unit,
+    appearanceMode: String,
+    onAppearanceModeChange: (String) -> Unit
 ) {
+    val palette = LocalAppPalette.current
     Column(
-        modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
+        modifier = Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Spacer(Modifier.height(8.dp))
-        Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White)
-        Text("MAKE JD MUSAX YOURS", color = Color.Gray, fontSize = 10.sp, letterSpacing = 2.sp)
+        Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Black, color = palette.text)
+        Text("MAKE JD MUSAX YOURS", color = palette.muted, fontSize = 10.sp, letterSpacing = 2.sp)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF151515))
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface)
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("Appearance", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Accent palette", color = Color.LightGray, fontSize = 13.sp)
+                Text("Appearance", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Display mode", color = palette.muted, fontSize = 13.sp)
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    appearanceOptions.forEach { (key, label) ->
+                        FilterChip(
+                            selected = appearanceMode == key,
+                            onClick = { onAppearanceModeChange(key) },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+                Text(
+                    when (appearanceMode) {
+                        "light" -> "Bright surfaces for daytime listening."
+                        "amoled" -> "Pure black backgrounds for OLED displays and lower pixel power use."
+                        else -> "Comfortable dark surfaces for low-light listening."
+                    },
+                    color = palette.muted,
+                    fontSize = 12.sp
+                )
+                Text("Accent palette", color = palette.muted, fontSize = 13.sp)
                 accentOptions.chunked(3).forEach { group ->
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         group.forEach { (key, label) ->
@@ -88,23 +120,20 @@ fun SettingsScreen(
                         }
                     }
                 }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+                Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                     Column(Modifier.weight(1f)) {
-                        Text("Match album artwork", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text("Match album artwork", color = palette.text, fontWeight = FontWeight.SemiBold)
                         Text(
                             "Automatically sample the current track thumbnail and use its colors for the app accent.",
-                            color = Color.Gray,
+                            color = palette.muted,
                             fontSize = 12.sp
                         )
                     }
                     Switch(checked = dynamicTheme, onCheckedChange = onDynamicThemeChange)
                 }
                 Text(
-                    "When artwork matching is off, your selected accent is saved and restored on this device.",
-                    color = Color.Gray,
+                    "Your display mode and accent are saved on this device.",
+                    color = palette.muted,
                     fontSize = 12.sp
                 )
             }
@@ -112,34 +141,29 @@ fun SettingsScreen(
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF151515))
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface)
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Playback", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Background playback and Android media controls are provided by Media3.", color = Color.LightGray, fontSize = 13.sp)
+                Text("Playback", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Background playback and Android media controls are provided by Media3.", color = palette.muted, fontSize = 13.sp)
             }
         }
 
         Card(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            colors = CardDefaults.cardColors(containerColor = Color(0xFF151515))
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface)
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Audio tools", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Equalizer", color = Color.LightGray, fontWeight = FontWeight.SemiBold)
-                Text("Not connected yet — the native Android audio-session integration is still required.", color = Color.Gray, fontSize = 12.sp)
-                Text("Visualizer", color = Color.LightGray, fontWeight = FontWeight.SemiBold)
-                Text("Not connected yet — no inactive or simulated audio controls are shown.", color = Color.Gray, fontSize = 12.sp)
+                Text("Audio tools", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Equalizer", color = palette.text, fontWeight = FontWeight.SemiBold)
+                Text("Not connected yet — native Android audio-session integration is still required.", color = palette.muted, fontSize = 12.sp)
+                Text("Visualizer", color = palette.text, fontWeight = FontWeight.SemiBold)
+                Text("Not connected yet — no inactive or simulated audio controls are shown.", color = palette.muted, fontSize = 12.sp)
             }
         }
 
-        Text(
-            "JD musax • Native Android edition",
-            color = Color.DarkGray,
-            fontSize = 11.sp,
-            modifier = Modifier.padding(top = 4.dp)
-        )
+        Text("JD musax • Native Android edition", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
     }
 }
