@@ -878,6 +878,10 @@ private fun MiniPlayer(
                     Icon(Icons.Default.GraphicEq, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
                 }
             }
+            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                Text(track?.title ?: "Nothing playing", color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                Text(track?.artist ?: "Choose a track to start", color = palette.muted, maxLines = 1, fontSize = 11.sp)
+            }
             IconButton(onClick = onToggle, enabled = track != null) {
                 Icon(
                     if (isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
