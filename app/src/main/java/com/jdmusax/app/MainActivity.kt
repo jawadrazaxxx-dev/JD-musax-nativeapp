@@ -155,7 +155,7 @@ class ListeningHistoryStore(context: Context) {
             put("plays", count); put("playedAt", System.currentTimeMillis())
         })
         val array = JSONArray()
-        entries.take(100).forEach(array::put)
+        entries.take(100).forEach { array.put(it) }
         prefs.edit().putString("entries", array.toString()).apply()
     }
     private fun toTrack(item: JSONObject) = Track(
@@ -508,7 +508,7 @@ private fun JDMusaxApp(
                         mostPlayedTracks = mostPlayedTracks,
                         accent = accent,
                         savedIds = savedIds,
-                        onPlay = { play(it, saved.toList()) },
+                        onPlay = { track, queue -> play(track, queue) },
                         onToggleSave = { toggleSave(it) },
                         onImport = { imported ->
                             imported.forEach { item -> if (saved.none { it.id == item.id }) saved.add(0, item) }
@@ -678,7 +678,7 @@ private fun LibraryScreen(
     mostPlayedTracks: List<Track>,
     accent: Color,
     savedIds: Set<String>,
-    onPlay: (Track) -> Unit,
+    onPlay: (Track, List<Track>) -> Unit,
     onToggleSave: (Track) -> Unit,
     onImport: (List<Track>) -> Unit,
     onDownload: (Track) -> Unit
@@ -724,7 +724,7 @@ private fun LibraryScreen(
                 emptySubtitle = when (selectedCollection) { "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> "Tap the heart on any track to keep it here." },
                 accent = accent,
                 savedIds = savedIds,
-                onPlay = { track -> onPlay(track) },
+                onPlay = { track -> onPlay(track, visibleTracks) },
                 onToggleSave = onToggleSave,
                 onDownload = onDownload
             )
