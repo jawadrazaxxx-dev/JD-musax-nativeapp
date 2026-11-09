@@ -311,6 +311,7 @@ private fun JDMusaxApp(
         else -> AppPalette(Color(0xFF0D0D10), Color(0xFF151519), Color(0xFF202026), Color.White, Color(0xFFAAAAAF), Color(0xFF303038))
     }
     val scope = rememberCoroutineScope()
+    val appContext = androidx.compose.ui.platform.LocalContext.current
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
@@ -320,11 +321,11 @@ private fun JDMusaxApp(
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
-    val lyricsStore = remember { LyricsStore(androidx.compose.ui.platform.LocalContext.current) }
+    val lyricsStore = remember { LyricsStore(appContext) }
     var lyricsText by remember(nowPlaying?.id) { mutableStateOf(nowPlaying?.let { lyricsStore.load(it.id) } ?: "") }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
-    val historyStore = remember { ListeningHistoryStore(androidx.compose.ui.platform.LocalContext.current) }
+    val historyStore = remember { ListeningHistoryStore(appContext) }
     var recentTracks by remember { mutableStateOf(historyStore.recent()) }
     var mostPlayedTracks by remember { mutableStateOf(historyStore.mostPlayed()) }
 
@@ -998,5 +999,5 @@ private fun parseLrcLyrics(raw: String): List<Pair<Long, String>> {
         val seconds = match.groupValues[2].toLongOrNull() ?: return@mapNotNull null
         val fraction = match.groupValues[3].padEnd(3, '0').take(3).toLongOrNull() ?: 0L
         (minutes * 60_000L + seconds * 1_000L + fraction) to match.groupValues[4].trim()
-    }.filter { it.second.isNotBlank() }.sortedBy { it.first }
+    }.filter { it.second.isNotBlank() }.sortedBy { it.first }.toList()
 }
