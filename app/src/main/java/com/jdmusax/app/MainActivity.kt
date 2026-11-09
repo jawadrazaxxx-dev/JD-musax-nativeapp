@@ -83,6 +83,7 @@ class MainActivity : ComponentActivity() {
                 settings = settings,
                 isPlaying = playing,
                 onSpeedChange = { speed -> controller?.setPlaybackSpeed(speed) },
+                onCurrentPosition = { controller?.currentPosition ?: 0L },
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
@@ -126,6 +127,12 @@ class MainActivity : ComponentActivity() {
 }
 
 /* ---------- Library storage (SharedPreferences + JSON) ---------- */
+
+class LyricsStore(context: Context) {
+    private val prefs = context.getSharedPreferences("track_lyrics", Context.MODE_PRIVATE)
+    fun load(trackId: String): String = prefs.getString(trackId, "") ?: ""
+    fun save(trackId: String, lyrics: String) { prefs.edit().putString(trackId, lyrics).apply() }
+}
 
 class LibraryStore(context: Context) {
     private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
@@ -241,7 +248,8 @@ private fun JDMusaxApp(
     onNext: () -> Unit,
     onPlayQueue: (List<Track>, Int) -> Unit,
     onDownload: (Track) -> Unit,
-    onSpeedChange: (Float) -> Unit
+    onSpeedChange: (Float) -> Unit,
+    onCurrentPosition: () -> Long
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -277,6 +285,9 @@ private fun JDMusaxApp(
     var showNowPlaying by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
+    var positionMs by remember { mutableLongStateOf(0L) }
+    val lyricsStore = remember { LyricsStore(androidx.compose.ui.platform.LocalContext.current) }
+    var lyricsText by remember(nowPlaying?.id) { mutableStateOf(nowPlaying?.let { lyricsStore.load(it.id) } ?: "") }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
 
@@ -285,6 +296,13 @@ private fun JDMusaxApp(
             artworkAccent = extractArtworkAccent(nowPlaying?.artwork)
         } else {
             artworkAccent = null
+        }
+    }
+
+    LaunchedEffect(isPlaying, nowPlaying?.id) {
+        while (isPlaying && nowPlaying != null) {
+            positionMs = onCurrentPosition().coerceAtLeast(0L)
+            delay(250L)
         }
     }
 
@@ -407,7 +425,10 @@ private fun JDMusaxApp(
                         onNext = { if (playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() },
                         onSelectTrack = { skipTo(it) },
                         onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
-                        onSleepTimerChange = { sleepMinutes = it }
+                        onSleepTimerChange = { sleepMinutes = it },
+                        lyrics = lyricsText,
+                        positionMs = positionMs,
+                        onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } }
                     )
                 } else when (tab) {
                     AppTab.HOME -> HomeScreen(
@@ -818,7 +839,8 @@ private fun NowPlayingScreen(
     track: Track, queue: List<Track>, currentIndex: Int, isPlaying: Boolean,
     palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
-    onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit
+    onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
+    lyrics: String, positionMs: Long, onLyricsChange: (String) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -863,8 +885,64 @@ private fun NowPlayingScreen(
             }
         }
         Spacer(Modifier.height(12.dp))
+        var showLyrics by remember { mutableStateOf(false) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            Text("Up next", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Text(if (showLyrics) "Lyrics" else "Up next", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Spacer(Modifier.weight(1f))
+            TextButton(onClick = { showLyrics = !showLyrics }) { Text(if (showLyrics) "Show queue" else "Lyrics", color = accent) }
+        }
+        if (showLyrics) {
+            val timedLines = remember(lyrics) { parseLrcLyrics(lyrics) }
+            if (timedLines.isNotEmpty()) {
+                val activeLine = timedLines.indexOfLast { it.first <= positionMs }.coerceAtLeast(0)
+                LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 190.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    items(timedLines.size) { index ->
+                        Text(timedLines[index].second, color = if (index == activeLine) accent else palette.muted,
+                            fontSize = if (index == activeLine) 18.sp else 14.sp, fontWeight = if (index == activeLine) FontWeight.Bold else FontWeight.Normal,
+                            modifier = Modifier.padding(vertical = 7.dp))
+                    }
+                }
+            } else {
+                Text("Paste timed .LRC lyrics below to enable line highlighting.", color = palette.muted, fontSize = 12.sp)
+            }
+            OutlinedTextField(value = lyrics, onValueChange = onLyricsChange, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 140.dp),
+                placeholder = { Text("[00:12.00] Lyrics line…") }, label = { Text("Track lyrics (.LRC supported)") })
+        } else {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("Up next", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+                Spacer(Modifier.weight(1f))
+                Text(queue.size.toString() + " tracks", color = palette.muted, fontSize = 12.sp)
+            }
+            LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 150.dp)) {
+                items(queue.size) { index ->
+                    val item = queue[index]
+                    Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                        .background(if (index == currentIndex) palette.surfaceVariant else Color.Transparent)
+                        .clickable { onSelectTrack(index) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Text((index + 1).toString(), color = if (index == currentIndex) accent else palette.muted, modifier = Modifier.width(28.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(item.title, color = palette.text, maxLines = 1, fontSize = 13.sp)
+                            Text(item.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
+                        }
+                        if (index == currentIndex) Icon(Icons.Default.Equalizer, null, tint = accent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun parseLrcLyrics(raw: String): List<Pair<Long, String>> {
+    val pattern = Regex("""\[(\d{2}):(\d{2})(?:\.(\d{1,3}))?\](.*)""")
+    return raw.lineSequence().mapNotNull { line ->
+        val match = pattern.matchEntire(line.trim()) ?: return@mapNotNull null
+        val minutes = match.groupValues[1].toLongOrNull() ?: return@mapNotNull null
+        val seconds = match.groupValues[2].toLongOrNull() ?: return@mapNotNull null
+        val fraction = match.groupValues[3].padEnd(3, '0').take(3).toLongOrNull() ?: 0L
+        (minutes * 60_000L + seconds * 1_000L + fraction) to match.groupValues[4].trim()
+    }.filter { it.second.isNotBlank() }.sortedBy { it.first }
+}
+ color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
             Spacer(Modifier.weight(1f))
             Text(queue.size.toString() + " tracks", color = palette.muted, fontSize = 12.sp)
         }
