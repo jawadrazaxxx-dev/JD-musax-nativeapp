@@ -62,11 +62,13 @@ class MainActivity : ComponentActivity() {
         }, MoreExecutors.directExecutor())
 
         val library = LibraryStore(applicationContext)
+        val settings = SettingsStore(applicationContext)
 
         setContent {
             JDMusaxApp(
                 repo = repo,
                 library = library,
+                settings = settings,
                 isPlaying = playing,
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
@@ -154,18 +156,26 @@ private suspend fun fetchTrending(): List<Track> = withContext(Dispatchers.IO) {
 private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     EXPLORE("Explore", Icons.Default.Explore),
-    LIBRARY("Library", Icons.Default.LibraryMusic)
+    LIBRARY("Library", Icons.Default.LibraryMusic),
+    SETTINGS("Settings", Icons.Default.Settings)
 }
 
 @Composable
 private fun JDMusaxApp(
     repo: AudiusRepository,
     library: LibraryStore,
+    settings: SettingsStore,
     isPlaying: Boolean,
     onToggle: () -> Unit,
     onPlay: (Track) -> Unit
 ) {
-    val accent = Color(0xFFB7A4FF)
+    var accentName by remember { mutableStateOf(settings.getAccent()) }
+    val accent = when (accentName) {
+        "blue" -> Color(0xFF80BFFF)
+        "mint" -> Color(0xFF80E0C0)
+        "rose" -> Color(0xFFFF9EB5)
+        else -> Color(0xFFB7A4FF)
+    }
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
@@ -288,6 +298,13 @@ private fun JDMusaxApp(
                         savedIds = savedIds,
                         onPlay = { play(it) },
                         onToggleSave = { toggleSave(it) }
+                    )
+                    AppTab.SETTINGS -> SettingsScreen(
+                        accentName = accentName,
+                        onAccentChange = { name ->
+                            accentName = name
+                            settings.setAccent(name)
+                        }
                     )
                 }
             }
