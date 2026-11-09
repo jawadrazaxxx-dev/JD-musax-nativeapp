@@ -56,6 +56,30 @@ class MainActivity : ComponentActivity() {
     private var controller: MediaController? = null
     private val repo = AudiusRepository()
     private var playing by mutableStateOf(false)
+    private var sessionTracks by mutableStateOf(emptyList<Track>())
+    private var sessionIndex by mutableIntStateOf(-1)
+    private var sessionShuffleEnabled by mutableStateOf(false)
+    private var sessionRepeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
+
+    private fun syncPlaybackSnapshot(player: Player) {
+        sessionTracks = (0 until player.mediaItemCount).map { index ->
+            val item = player.getMediaItemAt(index)
+            val uri = item.localConfiguration?.uri
+            val isLocal = uri?.scheme == "content" || uri?.scheme == "file"
+            Track(
+                id = item.mediaId,
+                title = item.mediaMetadata.title?.toString() ?: "Unknown track",
+                artist = item.mediaMetadata.artist?.toString() ?: "Unknown artist",
+                artwork = item.mediaMetadata.artworkUri?.toString(),
+                duration = if (index == player.currentMediaItemIndex) player.duration.takeIf { it > 0L } ?: 0L else 0L,
+                localUri = if (isLocal) uri.toString() else null,
+                streamUrl = if (isLocal) null else uri?.toString()
+            )
+        }
+        sessionIndex = player.currentMediaItemIndex.takeIf { it in sessionTracks.indices } ?: -1
+        sessionShuffleEnabled = player.shuffleModeEnabled
+        sessionRepeatMode = player.repeatMode
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -68,8 +92,22 @@ class MainActivity : ComponentActivity() {
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         playing = isPlaying
                     }
+
+                    override fun onEvents(player: Player, events: Player.Events) {
+                        if (
+                            events.contains(Player.EVENT_TIMELINE_CHANGED) ||
+                            events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) ||
+                            events.contains(Player.EVENT_MEDIA_ITEM_PROPERTIES_CHANGED) ||
+                            events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED) ||
+                            events.contains(Player.EVENT_REPEAT_MODE_CHANGED)
+                        ) {
+                            syncPlaybackSnapshot(player)
+                        }
+                    }
                 })
                 controller = c
+                playing = c.isPlaying
+                syncPlaybackSnapshot(c)
             }
         }, MoreExecutors.directExecutor())
 
@@ -82,6 +120,10 @@ class MainActivity : ComponentActivity() {
                 library = library,
                 settings = settings,
                 isPlaying = playing,
+                sessionTracks = sessionTracks,
+                sessionIndex = sessionIndex,
+                sessionShuffleEnabled = sessionShuffleEnabled,
+                sessionRepeatMode = sessionRepeatMode,
                 onSpeedChange = { speed -> controller?.setPlaybackSpeed(speed) },
                 onCurrentPosition = { controller?.currentPosition ?: 0L },
                 onCurrentDuration = { controller?.duration?.takeIf { it > 0L } ?: 0L },
@@ -281,6 +323,10 @@ private fun JDMusaxApp(
     library: LibraryStore,
     settings: SettingsStore,
     isPlaying: Boolean,
+    sessionTracks: List<Track>,
+    sessionIndex: Int,
+    sessionShuffleEnabled: Boolean,
+    sessionRepeatMode: Int,
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -331,7 +377,7 @@ private fun JDMusaxApp(
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
     var shuffleEnabled by remember { mutableStateOf(false) }
-    var repeatMode by remember { mutableIntStateOf(Player.REPEAT_MODE_OFF) }
+    var repeatMode by remember { mutableIntStateOf(sessionRepeatMode) }
     val lyricsStore = remember { LyricsStore(appContext) }
     var lyricsText by remember(nowPlaying?.id) { mutableStateOf(nowPlaying?.let { lyricsStore.load(it.id) } ?: "") }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
@@ -339,6 +385,27 @@ private fun JDMusaxApp(
     val historyStore = remember { ListeningHistoryStore(appContext) }
     var recentTracks by remember { mutableStateOf(historyStore.recent()) }
     var mostPlayedTracks by remember { mutableStateOf(historyStore.mostPlayed()) }
+
+    LaunchedEffect(sessionTracks, sessionIndex) {
+        if (sessionTracks.isNotEmpty() && sessionIndex in sessionTracks.indices) {
+            playbackQueue = sessionTracks
+            playbackIndex = sessionIndex
+            nowPlaying = sessionTracks[sessionIndex]
+        } else if (sessionTracks.isEmpty() && sessionIndex == -1) {
+            playbackQueue = emptyList()
+            playbackIndex = -1
+            nowPlaying = null
+            showNowPlaying = false
+        }
+    }
+
+    LaunchedEffect(sessionShuffleEnabled) {
+        shuffleEnabled = sessionShuffleEnabled
+    }
+
+    LaunchedEffect(sessionRepeatMode) {
+        repeatMode = sessionRepeatMode
+    }
 
     LaunchedEffect(nowPlaying?.artwork, dynamicTheme) {
         if (dynamicTheme) {
