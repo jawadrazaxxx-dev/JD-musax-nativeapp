@@ -18,6 +18,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -264,6 +265,7 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("Pakistani") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -300,18 +302,19 @@ private fun JDMusaxApp(
         scope.launch {
             searching = true
             searchError = null
-            runCatching { repo.search(query) }
+            runCatching { repo.search("${selectedCategory} $query") }
                 .onSuccess { results = it }
                 .onFailure { searchError = it.message ?: "Search failed" }
             searching = false
         }
     }
 
-    fun loadTrending() {
+    fun loadTrending(category: String = selectedCategory) {
+        selectedCategory = category
         scope.launch {
             trendingLoading = true
             trendingError = null
-            runCatching { fetchTrending() }
+            runCatching { repo.search("${categoryQuery(selectedCategory)} music") }
                 .onSuccess { trending = it; trendingLoaded = true }
                 .onFailure { trendingError = it.message ?: "Could not load trending" }
             trendingLoading = false
@@ -367,6 +370,8 @@ private fun JDMusaxApp(
                     AppTab.HOME -> HomeScreen(
                         query = query,
                         onQueryChange = { query = it },
+                        category = selectedCategory,
+                        onCategoryChange = { selectedCategory = it; runSearch() },
                         onSearch = { runSearch() },
                         loading = searching,
                         error = searchError,
@@ -383,6 +388,8 @@ private fun JDMusaxApp(
                         tracks = trending,
                         accent = accent,
                         savedIds = savedIds,
+                        category = selectedCategory,
+                        onCategoryChange = { loadTrending(it) },
                         onRefresh = { loadTrending() },
                         onPlay = { play(it, trending) },
                         onToggleSave = { toggleSave(it) },
@@ -418,10 +425,44 @@ private fun JDMusaxApp(
     }
 }
 
+private val musicCategories = listOf("Pakistani", "Indian", "Hollywood", "Lollywood", "Hindi")
+
+private fun categoryQuery(category: String): String = when (category) {
+    "Pakistani" -> "Pakistani"
+    "Indian" -> "Indian"
+    "Hollywood" -> "Hollywood"
+    "Lollywood" -> "Lollywood"
+    "Hindi" -> "Hindi"
+    else -> "Pakistani"
+}
+
+@Composable
+private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(vertical = 6.dp)
+    ) {
+        items(musicCategories) { category ->
+            FilterChip(
+                selected = selected == category,
+                onClick = { onSelected(category) },
+                label = { Text(category) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = accent,
+                    selectedLabelColor = Color.Black
+                )
+            )
+        }
+    }
+}
+
 @Composable
 private fun HomeScreen(
     query: String,
     onQueryChange: (String) -> Unit,
+    category: String,
+    onCategoryChange: (String) -> Unit,
     onSearch: () -> Unit,
     loading: Boolean,
     error: String?,
@@ -434,6 +475,7 @@ private fun HomeScreen(
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         ScreenHeader("JD musax", "MUSIC, WITHOUT THE NOISE.")
+        CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
@@ -456,6 +498,7 @@ private fun HomeScreen(
             )
         )
         Spacer(Modifier.height(12.dp))
+        CategoryPicker(category, onCategoryChange, accent)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = loading,
@@ -480,6 +523,8 @@ private fun ExploreScreen(
     tracks: List<Track>,
     accent: Color,
     savedIds: Set<String>,
+    category: String,
+    onCategoryChange: (String) -> Unit,
     onRefresh: () -> Unit,
     onPlay: (Track) -> Unit,
     onToggleSave: (Track) -> Unit,
