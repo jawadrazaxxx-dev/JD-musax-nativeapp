@@ -498,7 +498,6 @@ private fun HomeScreen(
             )
         )
         Spacer(Modifier.height(12.dp))
-        CategoryPicker(category, onCategoryChange, accent)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = loading,
@@ -537,6 +536,7 @@ private fun ExploreScreen(
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = accent)
             }
         }
+        CategoryPicker(category, onCategoryChange, accent)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = loading,
