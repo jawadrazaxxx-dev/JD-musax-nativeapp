@@ -97,7 +97,7 @@ class MainActivity : ComponentActivity() {
                         if (
                             events.contains(Player.EVENT_TIMELINE_CHANGED) ||
                             events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) ||
-                            events.contains(Player.EVENT_MEDIA_ITEM_PROPERTIES_CHANGED) ||
+                            events.contains(Player.EVENT_MEDIA_METADATA_CHANGED) ||
                             events.contains(Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED) ||
                             events.contains(Player.EVENT_REPEAT_MODE_CHANGED)
                         ) {
