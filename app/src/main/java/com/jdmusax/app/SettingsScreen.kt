@@ -13,9 +13,10 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -28,16 +29,37 @@ class SettingsStore(context: Context) {
     fun getAccent(): String = prefs.getString("accent", "violet") ?: "violet"
 
     fun setAccent(value: String) {
-        if (value in setOf("violet", "blue", "mint", "rose")) {
-            prefs.edit().putString("accent", value).apply()
-        }
+        if (value in ACCENT_OPTIONS) prefs.edit().putString("accent", value).apply()
+    }
+
+    fun isDynamicThemeEnabled(): Boolean = prefs.getBoolean("dynamic_theme", false)
+
+    fun setDynamicThemeEnabled(enabled: Boolean) {
+        prefs.edit().putBoolean("dynamic_theme", enabled).apply()
+    }
+
+    companion object {
+        val ACCENT_OPTIONS = setOf(
+            "violet", "indigo", "blue", "cyan", "teal", "mint",
+            "green", "lime", "yellow", "orange", "red", "rose", "pink"
+        )
     }
 }
+
+private val accentOptions = listOf(
+    "violet" to "Violet", "indigo" to "Indigo", "blue" to "Blue",
+    "cyan" to "Cyan", "teal" to "Teal", "mint" to "Mint",
+    "green" to "Green", "lime" to "Lime", "yellow" to "Yellow",
+    "orange" to "Orange", "red" to "Red", "rose" to "Rose",
+    "pink" to "Pink"
+)
 
 @Composable
 fun SettingsScreen(
     accentName: String,
-    onAccentChange: (String) -> Unit
+    dynamicTheme: Boolean,
+    onAccentChange: (String) -> Unit,
+    onDynamicThemeChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier.fillMaxSize().padding(horizontal = 20.dp),
@@ -54,23 +76,34 @@ fun SettingsScreen(
         ) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text("Appearance", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-                Text("Accent color", color = Color.LightGray, fontSize = 13.sp)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(
-                        "violet" to "Violet",
-                        "blue" to "Blue",
-                        "mint" to "Mint",
-                        "rose" to "Rose"
-                    ).forEach { (key, label) ->
-                        FilterChip(
-                            selected = accentName == key,
-                            onClick = { onAccentChange(key) },
-                            label = { Text(label) }
-                        )
+                Text("Accent palette", color = Color.LightGray, fontSize = 13.sp)
+                accentOptions.chunked(3).forEach { group ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        group.forEach { (key, label) ->
+                            FilterChip(
+                                selected = accentName == key && !dynamicTheme,
+                                onClick = { onAccentChange(key) },
+                                label = { Text(label, fontSize = 11.sp) }
+                            )
+                        }
                     }
                 }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Match album artwork", color = Color.White, fontWeight = FontWeight.SemiBold)
+                        Text(
+                            "Automatically sample the current track thumbnail and use its colors for the app accent.",
+                            color = Color.Gray,
+                            fontSize = 12.sp
+                        )
+                    }
+                    Switch(checked = dynamicTheme, onCheckedChange = onDynamicThemeChange)
+                }
                 Text(
-                    "Your choice is saved on this device and restored when JD musax opens again.",
+                    "When artwork matching is off, your selected accent is saved and restored on this device.",
                     color = Color.Gray,
                     fontSize = 12.sp
                 )
