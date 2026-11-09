@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -208,6 +209,18 @@ private suspend fun fetchTrending(): List<Track> = withContext(Dispatchers.IO) {
 
 /* ---------- UI ---------- */
 
+internal data class AppPalette(
+    val background: Color,
+    val surface: Color,
+    val surfaceVariant: Color,
+    val text: Color,
+    val muted: Color,
+    val border: Color
+)
+internal val LocalAppPalette = compositionLocalOf {
+    AppPalette(Color.Black, Color(0xFF101010), Color(0xFF1A1A1A), Color.White, Color.Gray, Color.DarkGray)
+}
+
 private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     EXPLORE("Explore", Icons.Default.Explore),
@@ -229,6 +242,7 @@ private fun JDMusaxApp(
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
+    var appearanceMode by remember { mutableStateOf(settings.getAppearanceMode()) }
     var artworkAccent by remember { mutableStateOf<Color?>(null) }
     val fixedAccent = when (accentName) {
         "blue" -> Color(0xFF80BFFF)
@@ -246,6 +260,11 @@ private fun JDMusaxApp(
         else -> Color(0xFFB7A4FF)
     }
     val accent = if (dynamicTheme) artworkAccent ?: fixedAccent else fixedAccent
+    val palette = when (appearanceMode) {
+        "light" -> AppPalette(Color(0xFFF5F5F8), Color.White, Color(0xFFECECF2), Color(0xFF17171D), Color(0xFF686875), Color(0xFFD8D8E0))
+        "amoled" -> AppPalette(Color.Black, Color.Black, Color(0xFF101014), Color.White, Color(0xFFAAAAAF), Color(0xFF29292F))
+        else -> AppPalette(Color(0xFF0D0D10), Color(0xFF151519), Color(0xFF202026), Color.White, Color(0xFFAAAAAF), Color(0xFF303038))
+    }
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
@@ -326,17 +345,15 @@ private fun JDMusaxApp(
     }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            background = Color.Black,
-            surface = Color(0xFF101010),
-            primary = accent,
-            onPrimary = Color.Black,
-            onBackground = Color.White,
-            onSurface = Color.White
-        )
+        colorScheme = if (appearanceMode == "light") {
+            lightColorScheme(primary = accent, onPrimary = Color.White, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+        } else {
+            darkColorScheme(primary = accent, onPrimary = Color.Black, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+        }
     ) {
+      CompositionLocalProvider(LocalAppPalette provides palette) {
         Scaffold(
-            containerColor = Color.Black,
+            containerColor = palette.background,
             bottomBar = {
                 Column {
                     MiniPlayer(
@@ -345,7 +362,7 @@ private fun JDMusaxApp(
                         onToggle = onToggle,
                         onNext = { if (playbackIndex >= 0 && playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() }
                     )
-                    NavigationBar(containerColor = Color(0xFF101010)) {
+                    NavigationBar(containerColor = palette.surface) {
                         AppTab.values().forEach { t ->
                             NavigationBarItem(
                                 selected = tab == t,
@@ -353,11 +370,11 @@ private fun JDMusaxApp(
                                 icon = { Icon(t.icon, contentDescription = null) },
                                 label = { Text(t.label) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.Black,
+                                    selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
                                     selectedTextColor = accent,
                                     indicatorColor = accent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
+                                    unselectedIconColor = palette.muted,
+                                    unselectedTextColor = palette.muted
                                 )
                             )
                         }
@@ -417,11 +434,17 @@ private fun JDMusaxApp(
                         onDynamicThemeChange = { enabled ->
                             dynamicTheme = enabled
                             settings.setDynamicThemeEnabled(enabled)
+                        },
+                        appearanceMode = appearanceMode,
+                        onAppearanceModeChange = { mode ->
+                            appearanceMode = mode
+                            settings.setAppearanceMode(mode)
                         }
                     )
                 }
             }
         }
+      }
     }
 }
 
@@ -472,7 +495,8 @@ private fun HomeScreen(
     onPlay: (Track) -> Unit,
     onToggleSave: (Track) -> Unit,
     onDownload: (Track) -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         ScreenHeader("JD musax", "MUSIC, WITHOUT THE NOISE.")
         CategoryPicker(category, onCategoryChange, accent)
@@ -492,9 +516,9 @@ private fun HomeScreen(
             keyboardActions = KeyboardActions(onSearch = { onSearch() }),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = accent,
-                unfocusedBorderColor = Color.DarkGray,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
+                unfocusedBorderColor = palette.border,
+                focusedTextColor = palette.text,
+                unfocusedTextColor = palette.text
             )
         )
         Spacer(Modifier.height(12.dp))
@@ -528,7 +552,8 @@ private fun ExploreScreen(
     onPlay: (Track) -> Unit,
     onToggleSave: (Track) -> Unit,
     onDownload: (Track) -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { ScreenHeader("Explore", "TRENDING ON AUDIUS") }
@@ -563,7 +588,8 @@ private fun LibraryScreen(
     onToggleSave: (Track) -> Unit,
     onImport: (List<Track>) -> Unit,
     onDownload: (Track) -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     val context = androidx.compose.ui.platform.LocalContext.current
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         val imported = uris.map { uri ->
@@ -624,14 +650,19 @@ private fun TrackContent(
     onToggleSave: (Track) -> Unit,
     onDownload: (Track) -> Unit
 ) {
+    val palette = LocalAppPalette.current
     when {
         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CircularProgressIndicator(color = accent)
         }
         error != null -> EmptyState("Something went wrong", error)
         tracks.isEmpty() -> EmptyState(emptyTitle, emptySubtitle)
-        else -> LazyColumn(Modifier.fillMaxSize()) {
-            items(tracks) { track ->
+        else -> LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(tracks, key = { it.id }) { track ->
                 TrackRow(
                     track = track,
                     accent = accent,
@@ -667,8 +698,14 @@ private fun TrackRow(
     onToggleSave: () -> Unit,
     onDownload: () -> Unit
 ) {
+    val palette = LocalAppPalette.current
+    Surface(
+        modifier = Modifier.fillMaxWidth().animateContentSize(),
+        shape = RoundedCornerShape(16.dp),
+        color = palette.surface
+    ) {
     Row(
-        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 7.dp),
+        Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         AsyncImage(
@@ -677,12 +714,12 @@ private fun TrackRow(
             modifier = Modifier
                 .size(52.dp)
                 .clip(RoundedCornerShape(10.dp))
-                .background(Color.DarkGray)
+                .background(palette.surfaceVariant)
         )
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
-            Text(track.title, color = Color.White, maxLines = 1, fontWeight = FontWeight.Medium)
-            Text(track.artist, color = Color.Gray, maxLines = 1, fontSize = 12.sp)
+            Text(track.title, color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold)
+            Text(track.artist, color = palette.muted, maxLines = 1, fontSize = 12.sp)
         }
         IconButton(onClick = onToggleSave) {
             Icon(
@@ -698,6 +735,7 @@ private fun TrackRow(
         }
         Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
     }
+    }
 }
 
 @Composable
@@ -708,11 +746,12 @@ private fun MiniPlayer(
     onPrevious: () -> Unit,
     onToggle: () -> Unit,
     onNext: () -> Unit
-) {
+ ) {
+    val palette = LocalAppPalette.current
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
         shape = RoundedCornerShape(22.dp),
-        color = Color(0xFF1A1A1A)
+        color = palette.surfaceVariant
     ) {
         Row(
             modifier = Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 8.dp),
@@ -720,10 +759,10 @@ private fun MiniPlayer(
             horizontalArrangement = Arrangement.SpaceEvenly
         ) {
             IconButton(onClick = onPrevious, enabled = track != null) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) Color.White else Color.DarkGray, modifier = Modifier.size(30.dp))
+                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
             }
             Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF080808)),
+                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(palette.surface),
                 contentAlignment = Alignment.Center
             ) {
                 if (track?.artwork != null) {
@@ -741,7 +780,7 @@ private fun MiniPlayer(
                 )
             }
             IconButton(onClick = onNext, enabled = track != null) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) Color.White else Color.DarkGray, modifier = Modifier.size(30.dp))
+                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
             }
         }
     }
