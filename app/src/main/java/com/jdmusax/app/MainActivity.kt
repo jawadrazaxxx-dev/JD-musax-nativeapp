@@ -15,6 +15,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -208,6 +209,18 @@ private suspend fun fetchTrending(): List<Track> = withContext(Dispatchers.IO) {
 
 /* ---------- UI ---------- */
 
+private data class AppPalette(
+    val background: Color,
+    val surface: Color,
+    val surfaceVariant: Color,
+    val text: Color,
+    val muted: Color,
+    val border: Color
+)
+private val LocalAppPalette = compositionLocalOf {
+    AppPalette(Color.Black, Color(0xFF101010), Color(0xFF1A1A1A), Color.White, Color.Gray, Color.DarkGray)
+}
+
 private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     EXPLORE("Explore", Icons.Default.Explore),
@@ -229,6 +242,7 @@ private fun JDMusaxApp(
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
+    var appearanceMode by remember { mutableStateOf(settings.getAppearanceMode()) }
     var artworkAccent by remember { mutableStateOf<Color?>(null) }
     val fixedAccent = when (accentName) {
         "blue" -> Color(0xFF80BFFF)
@@ -246,6 +260,11 @@ private fun JDMusaxApp(
         else -> Color(0xFFB7A4FF)
     }
     val accent = if (dynamicTheme) artworkAccent ?: fixedAccent else fixedAccent
+    val palette = when (appearanceMode) {
+        "light" -> AppPalette(Color(0xFFF5F5F8), Color.White, Color(0xFFECECF2), Color(0xFF17171D), Color(0xFF686875), Color(0xFFD8D8E0))
+        "amoled" -> AppPalette(Color.Black, Color.Black, Color(0xFF101014), Color.White, Color(0xFFAAAAAF), Color(0xFF29292F))
+        else -> AppPalette(Color(0xFF0D0D10), Color(0xFF151519), Color(0xFF202026), Color.White, Color(0xFFAAAAAF), Color(0xFF303038))
+    }
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
@@ -326,17 +345,15 @@ private fun JDMusaxApp(
     }
 
     MaterialTheme(
-        colorScheme = darkColorScheme(
-            background = Color.Black,
-            surface = Color(0xFF101010),
-            primary = accent,
-            onPrimary = Color.Black,
-            onBackground = Color.White,
-            onSurface = Color.White
-        )
+        colorScheme = if (appearanceMode == "light") {
+            lightColorScheme(primary = accent, onPrimary = Color.White, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+        } else {
+            darkColorScheme(primary = accent, onPrimary = Color.Black, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+        }
     ) {
+      CompositionLocalProvider(LocalAppPalette provides palette) {
         Scaffold(
-            containerColor = Color.Black,
+            containerColor = palette.background,
             bottomBar = {
                 Column {
                     MiniPlayer(
@@ -345,7 +362,7 @@ private fun JDMusaxApp(
                         onToggle = onToggle,
                         onNext = { if (playbackIndex >= 0 && playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() }
                     )
-                    NavigationBar(containerColor = Color(0xFF101010)) {
+                    NavigationBar(containerColor = palette.surface) {
                         AppTab.values().forEach { t ->
                             NavigationBarItem(
                                 selected = tab == t,
@@ -417,11 +434,17 @@ private fun JDMusaxApp(
                         onDynamicThemeChange = { enabled ->
                             dynamicTheme = enabled
                             settings.setDynamicThemeEnabled(enabled)
+                        },
+                        appearanceMode = appearanceMode,
+                        onAppearanceModeChange = { mode ->
+                            appearanceMode = mode
+                            settings.setAppearanceMode(mode)
                         }
                     )
                 }
             }
         }
+      }
     }
 }
 
