@@ -84,6 +84,8 @@ class MainActivity : ComponentActivity() {
                 isPlaying = playing,
                 onSpeedChange = { speed -> controller?.setPlaybackSpeed(speed) },
                 onCurrentPosition = { controller?.currentPosition ?: 0L },
+                onCurrentDuration = { controller?.duration?.takeIf { it > 0L } ?: 0L },
+                onSeekTo = { position -> controller?.seekTo(position) },
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
@@ -283,7 +285,9 @@ private fun JDMusaxApp(
     onPlayQueue: (List<Track>, Int) -> Unit,
     onDownload: (Track) -> Unit,
     onSpeedChange: (Float) -> Unit,
-    onCurrentPosition: () -> Long
+    onCurrentPosition: () -> Long,
+    onCurrentDuration: () -> Long,
+    onSeekTo: (Long) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -321,6 +325,7 @@ private fun JDMusaxApp(
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
+    var durationMs by remember { mutableLongStateOf(0L) }
     val lyricsStore = remember { LyricsStore(appContext) }
     var lyricsText by remember(nowPlaying?.id) { mutableStateOf(nowPlaying?.let { lyricsStore.load(it.id) } ?: "") }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
@@ -338,8 +343,9 @@ private fun JDMusaxApp(
     }
 
     LaunchedEffect(isPlaying, nowPlaying?.id) {
-        while (isPlaying && nowPlaying != null) {
+        while (nowPlaying != null) {
             positionMs = onCurrentPosition().coerceAtLeast(0L)
+            durationMs = onCurrentDuration().coerceAtLeast(0L)
             delay(250L)
         }
     }
@@ -472,6 +478,8 @@ private fun JDMusaxApp(
                         onSleepTimerChange = { sleepMinutes = it },
                         lyrics = lyricsText,
                         positionMs = positionMs,
+                        durationMs = durationMs.takeIf { it > 0L } ?: (nowPlaying?.duration ?: 0L),
+                        onSeekTo = { position -> positionMs = position; onSeekTo(position) },
                         onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } }
                     )
                 } else when (tab) {
@@ -903,7 +911,8 @@ private fun NowPlayingScreen(
     palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
     onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
-    lyrics: String, positionMs: Long, onLyricsChange: (String) -> Unit
+    lyrics: String, positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
+    onLyricsChange: (String) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -919,7 +928,15 @@ private fun NowPlayingScreen(
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
-        Spacer(Modifier.height(20.dp))
+        val progress = if (durationMs > 0L) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+        Slider(value = progress, onValueChange = { fraction -> if (durationMs > 0L) onSeekTo((fraction * durationMs).toLong()) },
+            enabled = durationMs > 0L, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
+            colors = SliderDefaults.colors(thumbColor = accent, activeTrackColor = accent))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text(formatPlaybackTime(positionMs), color = palette.muted, fontSize = 11.sp)
+            Text(formatPlaybackTime(durationMs), color = palette.muted, fontSize = 11.sp)
+        }
+        Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onPrevious, enabled = currentIndex > 0) { Icon(Icons.Default.SkipPrevious, "Previous", tint = palette.text, modifier = Modifier.size(34.dp)) }
             FilledIconButton(onClick = onToggle, modifier = Modifier.size(68.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent)) {
@@ -1004,4 +1021,11 @@ private fun parseLrcLyrics(raw: String): List<Pair<Long, String>> {
         val fraction = match.groupValues[3].padEnd(3, '0').take(3).toLongOrNull() ?: 0L
         (minutes * 60_000L + seconds * 1_000L + fraction) to match.groupValues[4].trim()
     }.filter { it.second.isNotBlank() }.sortedBy { it.first }.toList()
+}
+
+
+private fun formatPlaybackTime(milliseconds: Long): String {
+    if (milliseconds <= 0L) return "0:00"
+    val totalSeconds = milliseconds / 1000L
+    return "${totalSeconds / 60}:${(totalSeconds % 60).toString().padStart(2, '0')}"
 }
