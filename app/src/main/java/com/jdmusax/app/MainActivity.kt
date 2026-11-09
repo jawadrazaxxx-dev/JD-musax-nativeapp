@@ -55,6 +55,7 @@ import org.json.JSONObject
 class MainActivity : ComponentActivity() {
     private var controller: MediaController? = null
     private val repo = AudiusRepository()
+    private val listeningHistory by lazy { ListeningHistoryStore(applicationContext) }
     private var playing by mutableStateOf(false)
     private var sessionTracks by mutableStateOf(emptyList<Track>())
     private var sessionIndex by mutableIntStateOf(-1)
@@ -89,6 +90,23 @@ class MainActivity : ComponentActivity() {
         future.addListener({
             runCatching { future.get() }.getOrNull()?.let { c ->
                 c.addListener(object : Player.Listener {
+                    override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                        mediaItem?.let { item ->
+                            val uri = item.localConfiguration?.uri
+                            val isLocal = uri?.scheme == "content" || uri?.scheme == "file"
+                            listeningHistory.record(
+                                Track(
+                                    id = item.mediaId,
+                                    title = item.mediaMetadata.title?.toString() ?: "Unknown track",
+                                    artist = item.mediaMetadata.artist?.toString() ?: "Unknown artist",
+                                    artwork = item.mediaMetadata.artworkUri?.toString(),
+                                    localUri = if (isLocal) uri.toString() else null,
+                                    streamUrl = if (isLocal) null else uri?.toString()
+                                )
+                            )
+                        }
+                    }
+
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         playing = isPlaying
                     }
@@ -391,6 +409,8 @@ private fun JDMusaxApp(
             playbackQueue = sessionTracks
             playbackIndex = sessionIndex
             nowPlaying = sessionTracks[sessionIndex]
+            recentTracks = historyStore.recent()
+            mostPlayedTracks = historyStore.mostPlayed()
         } else if (sessionTracks.isEmpty() && sessionIndex == -1) {
             playbackQueue = emptyList()
             playbackIndex = -1
@@ -449,9 +469,6 @@ private fun JDMusaxApp(
         playbackQueue = safeQueue
         playbackIndex = safeQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
         nowPlaying = safeQueue[playbackIndex]
-        historyStore.record(safeQueue[playbackIndex])
-        recentTracks = historyStore.recent()
-        mostPlayedTracks = historyStore.mostPlayed()
         onPlayQueue(safeQueue, playbackIndex)
     }
 
@@ -459,9 +476,6 @@ private fun JDMusaxApp(
         if (index !in playbackQueue.indices) return
         playbackIndex = index
         nowPlaying = playbackQueue[index]
-        historyStore.record(playbackQueue[index])
-        recentTracks = historyStore.recent()
-        mostPlayedTracks = historyStore.mostPlayed()
         onPlayQueue(playbackQueue, index)
     }
 
