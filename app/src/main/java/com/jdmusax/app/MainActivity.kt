@@ -436,10 +436,25 @@ private fun JDMusaxApp(
     }
 
     LaunchedEffect(isPlaying, nowPlaying?.id) {
-        while (nowPlaying != null) {
+        if (nowPlaying == null) {
+            positionMs = 0L
+            durationMs = 0L
+            return@LaunchedEffect
+        }
+
+        fun refreshPlaybackPosition() {
             positionMs = onCurrentPosition().coerceAtLeast(0L)
             durationMs = onCurrentDuration().coerceAtLeast(0L)
-            delay(250L)
+        }
+
+        // A paused player does not need a polling loop. Refresh once and let
+        // explicit seek/player events update the position until playback resumes.
+        refreshPlaybackPosition()
+        if (!isPlaying) return@LaunchedEffect
+
+        while (isPlaying && nowPlaying != null) {
+            delay(500L)
+            refreshPlaybackPosition()
         }
     }
 
