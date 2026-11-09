@@ -2,15 +2,23 @@ package com.jdmusax.app
 
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.app.DownloadManager
+import android.net.Uri
+import android.os.Environment
+import android.provider.OpenableColumns
 import android.graphics.BitmapFactory
 import androidx.palette.graphics.Palette
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -75,16 +83,33 @@ class MainActivity : ComponentActivity() {
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
-                onPlay = { track ->
+                onPrevious = { controller?.seekToPreviousMediaItem() },
+                onNext = { controller?.seekToNextMediaItem() },
+                onPlayQueue = { tracks, startIndex ->
                     lifecycleScope.launch {
-                        val url = runCatching { repo.resolveStream(track.id) }.getOrNull()
-                            ?: return@launch
-                        val playable = track.copy(streamUrl = url)
-                        controller?.apply {
-                            setMediaItem(playable.mediaItem())
-                            prepare()
-                            play()
+                        val playable = tracks.mapNotNull { track ->
+                            if (track.localUri != null) track
+                            else runCatching { track.copy(streamUrl = repo.resolveStream(track.id)) }.getOrNull()
                         }
+                        if (playable.isNotEmpty()) {
+                            val safeIndex = startIndex.coerceIn(0, playable.lastIndex)
+                            controller?.apply {
+                                setMediaItems(playable.map { it.mediaItem() }, safeIndex, 0L)
+                                prepare()
+                                play()
+                            }
+                        }
+                    }
+                },
+                onDownload = { track ->
+                    if (track.isDownloadable) {
+                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80)
+                        val request = DownloadManager.Request(Uri.parse("https://api.audius.co/v1/tracks/${track.id}/download?app_name=JDmusax"))
+                            .setTitle(track.title)
+                            .setDescription("Downloading an Audius track marked downloadable")
+                            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.mp3")
+                        (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                     }
                 }
             )
@@ -113,7 +138,9 @@ class LibraryStore(context: Context) {
                         title = o.optString("title", "Unknown track"),
                         artist = o.optString("artist", "Unknown artist"),
                         artwork = o.optString("artwork").ifBlank { null },
-                        duration = o.optLong("duration", 0L)
+                        duration = o.optLong("duration", 0L),
+                        localUri = o.optString("localUri").ifBlank { null },
+                        isDownloadable = o.optBoolean("isDownloadable", false)
                     )
                 }
             }
@@ -129,6 +156,8 @@ class LibraryStore(context: Context) {
                 put("artist", t.artist)
                 put("artwork", t.artwork ?: "")
                 put("duration", t.duration)
+                put("localUri", t.localUri ?: "")
+                put("isDownloadable", t.isDownloadable)
             })
         }
         prefs.edit().putString("tracks", arr.toString()).apply()
@@ -193,7 +222,10 @@ private fun JDMusaxApp(
     settings: SettingsStore,
     isPlaying: Boolean,
     onToggle: () -> Unit,
-    onPlay: (Track) -> Unit
+    onPrevious: () -> Unit,
+    onNext: () -> Unit,
+    onPlayQueue: (List<Track>, Int) -> Unit,
+    onDownload: (Track) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -218,6 +250,8 @@ private fun JDMusaxApp(
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
+    var playbackQueue by remember { mutableStateOf(emptyList<Track>()) }
+    var playbackIndex by remember { mutableIntStateOf(-1) }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
 
@@ -231,6 +265,7 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
+    var selectedCategory by remember { mutableStateOf("Pakistani") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -241,9 +276,19 @@ private fun JDMusaxApp(
     var trendingError by remember { mutableStateOf<String?>(null) }
     var trendingLoaded by remember { mutableStateOf(false) }
 
-    fun play(track: Track) {
-        nowPlaying = track
-        onPlay(track)
+    fun play(track: Track, queue: List<Track>) {
+        val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
+        playbackQueue = safeQueue
+        playbackIndex = safeQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+        nowPlaying = safeQueue[playbackIndex]
+        onPlayQueue(safeQueue, playbackIndex)
+    }
+
+    fun skipTo(index: Int) {
+        if (index !in playbackQueue.indices) return
+        playbackIndex = index
+        nowPlaying = playbackQueue[index]
+        onPlayQueue(playbackQueue, index)
     }
 
     fun toggleSave(track: Track) {
@@ -257,18 +302,19 @@ private fun JDMusaxApp(
         scope.launch {
             searching = true
             searchError = null
-            runCatching { repo.search(query) }
+            runCatching { repo.search("${selectedCategory} $query") }
                 .onSuccess { results = it }
                 .onFailure { searchError = it.message ?: "Search failed" }
             searching = false
         }
     }
 
-    fun loadTrending() {
+    fun loadTrending(category: String = selectedCategory) {
+        selectedCategory = category
         scope.launch {
             trendingLoading = true
             trendingError = null
-            runCatching { fetchTrending() }
+            runCatching { repo.search("${categoryQuery(selectedCategory)} music") }
                 .onSuccess { trending = it; trendingLoaded = true }
                 .onFailure { trendingError = it.message ?: "Could not load trending" }
             trendingLoading = false
@@ -293,7 +339,12 @@ private fun JDMusaxApp(
             containerColor = Color.Black,
             bottomBar = {
                 Column {
-                    MiniPlayer(nowPlaying, isPlaying, accent, onToggle)
+                    MiniPlayer(
+                        nowPlaying, isPlaying, accent,
+                        onPrevious = { if (playbackIndex > 0) skipTo(playbackIndex - 1) else onPrevious() },
+                        onToggle = onToggle,
+                        onNext = { if (playbackIndex >= 0 && playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() }
+                    )
                     NavigationBar(containerColor = Color(0xFF101010)) {
                         AppTab.values().forEach { t ->
                             NavigationBarItem(
@@ -319,14 +370,17 @@ private fun JDMusaxApp(
                     AppTab.HOME -> HomeScreen(
                         query = query,
                         onQueryChange = { query = it },
+                        category = selectedCategory,
+                        onCategoryChange = { selectedCategory = it; runSearch() },
                         onSearch = { runSearch() },
                         loading = searching,
                         error = searchError,
                         tracks = results,
                         accent = accent,
                         savedIds = savedIds,
-                        onPlay = { play(it) },
-                        onToggleSave = { toggleSave(it) }
+                        onPlay = { play(it, results) },
+                        onToggleSave = { toggleSave(it) },
+                        onDownload = onDownload
                     )
                     AppTab.EXPLORE -> ExploreScreen(
                         loading = trendingLoading,
@@ -334,16 +388,24 @@ private fun JDMusaxApp(
                         tracks = trending,
                         accent = accent,
                         savedIds = savedIds,
+                        category = selectedCategory,
+                        onCategoryChange = { loadTrending(it) },
                         onRefresh = { loadTrending() },
-                        onPlay = { play(it) },
-                        onToggleSave = { toggleSave(it) }
+                        onPlay = { play(it, trending) },
+                        onToggleSave = { toggleSave(it) },
+                        onDownload = onDownload
                     )
                     AppTab.LIBRARY -> LibraryScreen(
                         tracks = saved.toList(),
                         accent = accent,
                         savedIds = savedIds,
-                        onPlay = { play(it) },
-                        onToggleSave = { toggleSave(it) }
+                        onPlay = { play(it, saved.toList()) },
+                        onToggleSave = { toggleSave(it) },
+                        onImport = { imported ->
+                            imported.forEach { item -> if (saved.none { it.id == item.id }) saved.add(0, item) }
+                            library.save(saved.toList())
+                        },
+                        onDownload = onDownload
                     )
                     AppTab.SETTINGS -> SettingsScreen(
                         accentName = accentName,
@@ -363,10 +425,44 @@ private fun JDMusaxApp(
     }
 }
 
+private val musicCategories = listOf("Pakistani", "Indian", "Hollywood", "Lollywood", "Hindi")
+
+private fun categoryQuery(category: String): String = when (category) {
+    "Pakistani" -> "Pakistani"
+    "Indian" -> "Indian"
+    "Hollywood" -> "Hollywood"
+    "Lollywood" -> "Lollywood"
+    "Hindi" -> "Hindi"
+    else -> "Pakistani"
+}
+
+@Composable
+private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
+    LazyRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        contentPadding = PaddingValues(vertical = 6.dp)
+    ) {
+        items(musicCategories) { category ->
+            FilterChip(
+                selected = selected == category,
+                onClick = { onSelected(category) },
+                label = { Text(category) },
+                colors = FilterChipDefaults.filterChipColors(
+                    selectedContainerColor = accent,
+                    selectedLabelColor = Color.Black
+                )
+            )
+        }
+    }
+}
+
 @Composable
 private fun HomeScreen(
     query: String,
     onQueryChange: (String) -> Unit,
+    category: String,
+    onCategoryChange: (String) -> Unit,
     onSearch: () -> Unit,
     loading: Boolean,
     error: String?,
@@ -374,10 +470,12 @@ private fun HomeScreen(
     accent: Color,
     savedIds: Set<String>,
     onPlay: (Track) -> Unit,
-    onToggleSave: (Track) -> Unit
+    onToggleSave: (Track) -> Unit,
+    onDownload: (Track) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         ScreenHeader("JD musax", "MUSIC, WITHOUT THE NOISE.")
+        CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
@@ -410,7 +508,8 @@ private fun HomeScreen(
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
-                onToggleSave = onToggleSave
+                onToggleSave = onToggleSave,
+                onDownload = onDownload
             )
         }
     }
@@ -423,9 +522,12 @@ private fun ExploreScreen(
     tracks: List<Track>,
     accent: Color,
     savedIds: Set<String>,
+    category: String,
+    onCategoryChange: (String) -> Unit,
     onRefresh: () -> Unit,
     onPlay: (Track) -> Unit,
-    onToggleSave: (Track) -> Unit
+    onToggleSave: (Track) -> Unit,
+    onDownload: (Track) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -434,6 +536,7 @@ private fun ExploreScreen(
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = accent)
             }
         }
+        CategoryPicker(category, onCategoryChange, accent)
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = loading,
@@ -444,7 +547,8 @@ private fun ExploreScreen(
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
-                onToggleSave = onToggleSave
+                onToggleSave = onToggleSave,
+                onDownload = onDownload
             )
         }
     }
@@ -456,10 +560,30 @@ private fun LibraryScreen(
     accent: Color,
     savedIds: Set<String>,
     onPlay: (Track) -> Unit,
-    onToggleSave: (Track) -> Unit
+    onToggleSave: (Track) -> Unit,
+    onImport: (List<Track>) -> Unit,
+    onDownload: (Track) -> Unit
 ) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
+        val imported = uris.map { uri ->
+            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
+            val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(0) else null
+            } ?: uri.lastPathSegment ?: "Local audio"
+            Track(id = "local:$uri", title = name.substringBeforeLast('.'), artist = "On this device", localUri = uri.toString())
+        }
+        if (imported.isNotEmpty()) onImport(imported)
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("Library", "YOUR SAVED TRACKS")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR FAVORITES & MUSIC") }
+            FilledTonalButton(onClick = { picker.launch(arrayOf("audio/*")) }) {
+                Icon(Icons.Default.Add, contentDescription = null)
+                Spacer(Modifier.width(4.dp))
+                Text("Import")
+            }
+        }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = false,
@@ -470,7 +594,8 @@ private fun LibraryScreen(
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
-                onToggleSave = onToggleSave
+                onToggleSave = onToggleSave,
+                onDownload = onDownload
             )
         }
     }
@@ -496,7 +621,8 @@ private fun TrackContent(
     accent: Color,
     savedIds: Set<String>,
     onPlay: (Track) -> Unit,
-    onToggleSave: (Track) -> Unit
+    onToggleSave: (Track) -> Unit,
+    onDownload: (Track) -> Unit
 ) {
     when {
         loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -511,7 +637,8 @@ private fun TrackContent(
                     accent = accent,
                     saved = track.id in savedIds,
                     onClick = { onPlay(track) },
-                    onToggleSave = { onToggleSave(track) }
+                    onToggleSave = { onToggleSave(track) },
+                    onDownload = { onDownload(track) }
                 )
             }
         }
@@ -537,7 +664,8 @@ private fun TrackRow(
     accent: Color,
     saved: Boolean,
     onClick: () -> Unit,
-    onToggleSave: () -> Unit
+    onToggleSave: () -> Unit,
+    onDownload: () -> Unit
 ) {
     Row(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 7.dp),
@@ -563,67 +691,57 @@ private fun TrackRow(
                 tint = if (saved) accent else Color.Gray
             )
         }
-        Icon(
-            Icons.Default.PlayCircle,
-            contentDescription = null,
-            tint = accent,
-            modifier = Modifier.size(28.dp)
-        )
+        if (track.isDownloadable) {
+            IconButton(onClick = onDownload) {
+                Icon(Icons.Default.Download, contentDescription = "Download", tint = accent)
+            }
+        }
+        Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
     }
 }
 
 @Composable
-private fun MiniPlayer(track: Track?, isPlaying: Boolean, accent: Color, onToggle: () -> Unit) {
+private fun MiniPlayer(
+    track: Track?,
+    isPlaying: Boolean,
+    accent: Color,
+    onPrevious: () -> Unit,
+    onToggle: () -> Unit,
+    onNext: () -> Unit
+) {
     Surface(
         modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(22.dp),
         color = Color(0xFF1A1A1A)
     ) {
-        Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
-            val art = track?.artwork
+        Row(
+            modifier = Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceEvenly
+        ) {
+            IconButton(onClick = onPrevious, enabled = track != null) {
+                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) Color.White else Color.DarkGray, modifier = Modifier.size(30.dp))
+            }
             Box(
-                Modifier
-                    .size(52.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(Color(0xFF080808)),
+                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(Color(0xFF080808)),
                 contentAlignment = Alignment.Center
             ) {
-                if (art != null) {
-                    AsyncImage(
-                        model = art,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize()
-                    )
+                if (track?.artwork != null) {
+                    AsyncImage(model = track.artwork, contentDescription = "Album artwork", modifier = Modifier.fillMaxSize())
                 } else {
-                    Icon(
-                        Icons.Default.GraphicEq,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
                 }
-            }
-            Spacer(Modifier.width(12.dp))
-            Column(Modifier.weight(1f)) {
-                Text(
-                    track?.title ?: "Nothing playing",
-                    color = Color.White,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1
-                )
-                Text(
-                    track?.artist ?: "Choose a track to begin",
-                    color = Color.Gray,
-                    fontSize = 12.sp,
-                    maxLines = 1
-                )
             }
             IconButton(onClick = onToggle, enabled = track != null) {
                 Icon(
-                    if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                    contentDescription = "Play or pause",
-                    tint = if (track != null) accent else Color.DarkGray
+                    if (isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
+                    contentDescription = if (isPlaying) "Pause" else "Play",
+                    tint = if (track != null) accent else Color.DarkGray,
+                    modifier = Modifier.size(38.dp)
                 )
+            }
+            IconButton(onClick = onNext, enabled = track != null) {
+                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) Color.White else Color.DarkGray, modifier = Modifier.size(30.dp))
             }
         }
     }
