@@ -44,6 +44,7 @@ import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
@@ -81,6 +82,7 @@ class MainActivity : ComponentActivity() {
                 library = library,
                 settings = settings,
                 isPlaying = playing,
+                onSpeedChange = { speed -> controller?.setPlaybackSpeed(speed) },
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
@@ -238,7 +240,8 @@ private fun JDMusaxApp(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onPlayQueue: (List<Track>, Int) -> Unit,
-    onDownload: (Track) -> Unit
+    onDownload: (Track) -> Unit,
+    onSpeedChange: (Float) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -271,6 +274,9 @@ private fun JDMusaxApp(
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
     var playbackQueue by remember { mutableStateOf(emptyList<Track>()) }
     var playbackIndex by remember { mutableIntStateOf(-1) }
+    var showNowPlaying by remember { mutableStateOf(false) }
+    var playbackSpeed by remember { mutableFloatStateOf(1f) }
+    var sleepMinutes by remember { mutableIntStateOf(0) }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
 
@@ -279,6 +285,14 @@ private fun JDMusaxApp(
             artworkAccent = extractArtworkAccent(nowPlaying?.artwork)
         } else {
             artworkAccent = null
+        }
+    }
+
+    LaunchedEffect(sleepMinutes) {
+        if (sleepMinutes > 0) {
+            delay(sleepMinutes * 60_000L)
+            if (isPlaying) onToggle()
+            sleepMinutes = 0
         }
     }
 
@@ -360,7 +374,8 @@ private fun JDMusaxApp(
                         nowPlaying, isPlaying, accent,
                         onPrevious = { if (playbackIndex > 0) skipTo(playbackIndex - 1) else onPrevious() },
                         onToggle = onToggle,
-                        onNext = { if (playbackIndex >= 0 && playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() }
+                        onNext = { if (playbackIndex >= 0 && playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() },
+                        onOpen = { showNowPlaying = true }
                     )
                     NavigationBar(containerColor = palette.surface) {
                         AppTab.values().forEach { t ->
@@ -383,7 +398,18 @@ private fun JDMusaxApp(
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                when (tab) {
+                if (showNowPlaying && nowPlaying != null) {
+                    NowPlayingScreen(
+                        track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
+                        isPlaying = isPlaying, palette = palette, accent = accent, speed = playbackSpeed,
+                        sleepMinutes = sleepMinutes, onClose = { showNowPlaying = false }, onToggle = onToggle,
+                        onPrevious = { if (playbackIndex > 0) skipTo(playbackIndex - 1) else onPrevious() },
+                        onNext = { if (playbackIndex < playbackQueue.lastIndex) skipTo(playbackIndex + 1) else onNext() },
+                        onSelectTrack = { skipTo(it) },
+                        onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
+                        onSleepTimerChange = { sleepMinutes = it }
+                    )
+                } else when (tab) {
                     AppTab.HOME -> HomeScreen(
                         query = query,
                         onQueryChange = { query = it },
@@ -745,11 +771,12 @@ private fun MiniPlayer(
     accent: Color,
     onPrevious: () -> Unit,
     onToggle: () -> Unit,
-    onNext: () -> Unit
+    onNext: () -> Unit,
+    onOpen: () -> Unit
  ) {
     val palette = LocalAppPalette.current
     Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clickable(onClick = onOpen),
         shape = RoundedCornerShape(22.dp),
         color = palette.surfaceVariant
     ) {
@@ -781,6 +808,79 @@ private fun MiniPlayer(
             }
             IconButton(onClick = onNext, enabled = track != null) {
                 Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun NowPlayingScreen(
+    track: Track, queue: List<Track>, currentIndex: Int, isPlaying: Boolean,
+    palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
+    onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
+    onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit
+) {
+    Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onClose) { Icon(Icons.Default.KeyboardArrowDown, "Close player", tint = palette.text) }
+            Spacer(Modifier.weight(1f))
+            Text("NOW PLAYING", color = palette.muted, fontSize = 11.sp, letterSpacing = 2.sp)
+            Spacer(Modifier.weight(1f))
+            Icon(Icons.Default.GraphicEq, null, tint = accent)
+        }
+        Spacer(Modifier.height(16.dp))
+        AsyncImage(model = track.artwork, contentDescription = "Album artwork",
+            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(1f).clip(RoundedCornerShape(26.dp)).background(palette.surfaceVariant))
+        Spacer(Modifier.height(24.dp))
+        Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
+        Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
+        Spacer(Modifier.height(20.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onPrevious, enabled = currentIndex > 0) { Icon(Icons.Default.SkipPrevious, "Previous", tint = palette.text, modifier = Modifier.size(34.dp)) }
+            FilledIconButton(onClick = onToggle, modifier = Modifier.size(68.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent)) {
+                Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, if (isPlaying) "Pause" else "Play", tint = Color.Black, modifier = Modifier.size(36.dp))
+            }
+            IconButton(onClick = onNext, enabled = currentIndex < queue.lastIndex) { Icon(Icons.Default.SkipNext, "Next", tint = palette.text, modifier = Modifier.size(34.dp)) }
+        }
+        Spacer(Modifier.height(16.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Speed", color = palette.muted, fontSize = 13.sp)
+            Spacer(Modifier.weight(1f))
+            listOf(0.75f, 1f, 1.25f, 1.5f, 2f).forEach { value ->
+                FilterChip(selected = speed == value, onClick = { onSpeedChange(value) }, label = { Text(value.toString() + "x") })
+                Spacer(Modifier.width(4.dp))
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Icon(Icons.Default.Bedtime, null, tint = palette.muted)
+            Spacer(Modifier.width(8.dp))
+            Text("Sleep timer", color = palette.text)
+            Spacer(Modifier.weight(1f))
+            listOf(0, 15, 30, 60).forEach { minutes ->
+                FilterChip(selected = sleepMinutes == minutes, onClick = { onSleepTimerChange(minutes) }, label = { Text(if (minutes == 0) "Off" else minutes.toString() + "m") })
+                Spacer(Modifier.width(3.dp))
+            }
+        }
+        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text("Up next", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
+            Spacer(Modifier.weight(1f))
+            Text(queue.size.toString() + " tracks", color = palette.muted, fontSize = 12.sp)
+        }
+        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 150.dp)) {
+            items(queue.size) { index ->
+                val item = queue[index]
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
+                    .background(if (index == currentIndex) palette.surfaceVariant else Color.Transparent)
+                    .clickable { onSelectTrack(index) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text((index + 1).toString(), color = if (index == currentIndex) accent else palette.muted, modifier = Modifier.width(28.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(item.title, color = palette.text, maxLines = 1, fontSize = 13.sp)
+                        Text(item.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
+                    }
+                    if (index == currentIndex) Icon(Icons.Default.Equalizer, null, tint = accent)
+                }
             }
         }
     }
