@@ -134,6 +134,40 @@ class LyricsStore(context: Context) {
     fun save(trackId: String, lyrics: String) { prefs.edit().putString(trackId, lyrics).apply() }
 }
 
+class ListeningHistoryStore(context: Context) {
+    private val prefs = context.getSharedPreferences("listening_history", Context.MODE_PRIVATE)
+    private fun read(): MutableList<JSONObject> {
+        val raw = prefs.getString("entries", null) ?: return mutableListOf()
+        return runCatching {
+            val array = JSONArray(raw)
+            MutableList(array.length()) { index -> array.getJSONObject(index) }
+        }.getOrDefault(mutableListOf())
+    }
+    fun record(track: Track) {
+        val entries = read()
+        val existing = entries.firstOrNull { it.optString("id") == track.id }
+        val count = (existing?.optInt("plays", 0) ?: 0) + 1
+        entries.removeAll { it.optString("id") == track.id }
+        entries.add(0, JSONObject().apply {
+            put("id", track.id); put("title", track.title); put("artist", track.artist)
+            put("artwork", track.artwork ?: ""); put("duration", track.duration)
+            put("localUri", track.localUri ?: ""); put("downloadable", track.isDownloadable)
+            put("plays", count); put("playedAt", System.currentTimeMillis())
+        })
+        val array = JSONArray()
+        entries.take(100).forEach { array.put(it) }
+        prefs.edit().putString("entries", array.toString()).apply()
+    }
+    private fun toTrack(item: JSONObject) = Track(
+        id = item.optString("id"), title = item.optString("title", "Unknown track"),
+        artist = item.optString("artist", "Unknown artist"), artwork = item.optString("artwork").ifBlank { null },
+        duration = item.optLong("duration", 0L), localUri = item.optString("localUri").ifBlank { null },
+        isDownloadable = item.optBoolean("downloadable", false)
+    )
+    fun recent(): List<Track> = read().sortedByDescending { it.optLong("playedAt") }.map(::toTrack)
+    fun mostPlayed(): List<Track> = read().sortedWith(compareByDescending<JSONObject> { it.optInt("plays") }.thenByDescending { it.optLong("playedAt") }).map(::toTrack)
+}
+
 class LibraryStore(context: Context) {
     private val prefs = context.getSharedPreferences("library", Context.MODE_PRIVATE)
 
@@ -277,6 +311,7 @@ private fun JDMusaxApp(
         else -> AppPalette(Color(0xFF0D0D10), Color(0xFF151519), Color(0xFF202026), Color.White, Color(0xFFAAAAAF), Color(0xFF303038))
     }
     val scope = rememberCoroutineScope()
+    val appContext = androidx.compose.ui.platform.LocalContext.current
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
@@ -286,10 +321,13 @@ private fun JDMusaxApp(
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
-    val lyricsStore = remember { LyricsStore(androidx.compose.ui.platform.LocalContext.current) }
+    val lyricsStore = remember { LyricsStore(appContext) }
     var lyricsText by remember(nowPlaying?.id) { mutableStateOf(nowPlaying?.let { lyricsStore.load(it.id) } ?: "") }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
+    val historyStore = remember { ListeningHistoryStore(appContext) }
+    var recentTracks by remember { mutableStateOf(historyStore.recent()) }
+    var mostPlayedTracks by remember { mutableStateOf(historyStore.mostPlayed()) }
 
     LaunchedEffect(nowPlaying?.artwork, dynamicTheme) {
         if (dynamicTheme) {
@@ -332,6 +370,9 @@ private fun JDMusaxApp(
         playbackQueue = safeQueue
         playbackIndex = safeQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
         nowPlaying = safeQueue[playbackIndex]
+        historyStore.record(safeQueue[playbackIndex])
+        recentTracks = historyStore.recent()
+        mostPlayedTracks = historyStore.mostPlayed()
         onPlayQueue(safeQueue, playbackIndex)
     }
 
@@ -339,6 +380,9 @@ private fun JDMusaxApp(
         if (index !in playbackQueue.indices) return
         playbackIndex = index
         nowPlaying = playbackQueue[index]
+        historyStore.record(playbackQueue[index])
+        recentTracks = historyStore.recent()
+        mostPlayedTracks = historyStore.mostPlayed()
         onPlayQueue(playbackQueue, index)
     }
 
@@ -461,9 +505,11 @@ private fun JDMusaxApp(
                     )
                     AppTab.LIBRARY -> LibraryScreen(
                         tracks = saved.toList(),
+                        recentTracks = recentTracks,
+                        mostPlayedTracks = mostPlayedTracks,
                         accent = accent,
                         savedIds = savedIds,
-                        onPlay = { play(it, saved.toList()) },
+                        onPlay = { track, queue -> play(track, queue) },
                         onToggleSave = { toggleSave(it) },
                         onImport = { imported ->
                             imported.forEach { item -> if (saved.none { it.id == item.id }) saved.add(0, item) }
@@ -629,9 +675,11 @@ private fun ExploreScreen(
 @Composable
 private fun LibraryScreen(
     tracks: List<Track>,
+    recentTracks: List<Track>,
+    mostPlayedTracks: List<Track>,
     accent: Color,
     savedIds: Set<String>,
-    onPlay: (Track) -> Unit,
+    onPlay: (Track, List<Track>) -> Unit,
     onToggleSave: (Track) -> Unit,
     onImport: (List<Track>) -> Unit,
     onDownload: (Track) -> Unit
@@ -648,6 +696,12 @@ private fun LibraryScreen(
         }
         if (imported.isNotEmpty()) onImport(imported)
     }
+    var selectedCollection by remember { mutableStateOf("Favorites") }
+    val visibleTracks = when (selectedCollection) {
+        "Recently played" -> recentTracks
+        "Most played" -> mostPlayedTracks
+        else -> tracks
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR FAVORITES & MUSIC") }
@@ -657,16 +711,21 @@ private fun LibraryScreen(
                 Text("Import")
             }
         }
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            listOf("Favorites", "Recently played", "Most played").forEach { collection ->
+                FilterChip(selected = selectedCollection == collection, onClick = { selectedCollection = collection }, label = { Text(collection, fontSize = 11.sp) })
+            }
+        }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = false,
                 error = null,
-                tracks = tracks,
-                emptyTitle = "Nothing saved yet",
-                emptySubtitle = "Tap the heart on any track to keep it here.",
+                tracks = visibleTracks,
+                emptyTitle = when (selectedCollection) { "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> "Nothing saved yet" },
+                emptySubtitle = when (selectedCollection) { "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> "Tap the heart on any track to keep it here." },
                 accent = accent,
                 savedIds = savedIds,
-                onPlay = onPlay,
+                onPlay = { track -> onPlay(track, visibleTracks) },
                 onToggleSave = onToggleSave,
                 onDownload = onDownload
             )
@@ -940,5 +999,5 @@ private fun parseLrcLyrics(raw: String): List<Pair<Long, String>> {
         val seconds = match.groupValues[2].toLongOrNull() ?: return@mapNotNull null
         val fraction = match.groupValues[3].padEnd(3, '0').take(3).toLongOrNull() ?: 0L
         (minutes * 60_000L + seconds * 1_000L + fraction) to match.groupValues[4].trim()
-    }.filter { it.second.isNotBlank() }.sortedBy { it.first }
+    }.filter { it.second.isNotBlank() }.sortedBy { it.first }.toList()
 }
