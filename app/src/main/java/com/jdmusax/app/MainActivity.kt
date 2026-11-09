@@ -2,6 +2,8 @@ package com.jdmusax.app
 
 import android.content.ComponentName
 import android.content.Context
+import android.graphics.BitmapFactory
+import androidx.palette.graphics.Palette
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -33,9 +35,11 @@ import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
 import com.google.common.util.concurrent.MoreExecutors
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
+import okhttp3.Request
 import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
@@ -133,6 +137,30 @@ class LibraryStore(context: Context) {
     }
 }
 
+private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dispatchers.IO) {
+    if (url.isNullOrBlank()) return@withContext null
+    runCatching {
+        val request = Request.Builder().url(url).build()
+        trendingClient.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) return@use null
+            val stream = response.body?.byteStream() ?: return@use null
+            val options = BitmapFactory.Options().apply { inSampleSize = 4 }
+            val bitmap = stream.use { BitmapFactory.decodeStream(it, null, options) }
+                ?: return@use null
+            try {
+                val palette = Palette.from(bitmap).clearFilters().generate()
+                val color = palette.vibrantSwatch?.rgb
+                    ?: palette.lightVibrantSwatch?.rgb
+                    ?: palette.mutedSwatch?.rgb
+                    ?: palette.dominantSwatch?.rgb
+                color?.let { Color(it) }
+            } finally {
+                bitmap.recycle()
+            }
+        }
+    }.getOrNull()
+}
+
 /* ---------- Trending request ---------- */
 
 private val trendingClient = OkHttpClient()
@@ -170,18 +198,38 @@ private fun JDMusaxApp(
     onPlay: (Track) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
-    val accent = when (accentName) {
+    var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
+    var artworkAccent by remember { mutableStateOf<Color?>(null) }
+    val fixedAccent = when (accentName) {
         "blue" -> Color(0xFF80BFFF)
+        "cyan" -> Color(0xFF62D9E8)
+        "teal" -> Color(0xFF55C7B3)
         "mint" -> Color(0xFF80E0C0)
+        "green" -> Color(0xFF8BCB88)
+        "lime" -> Color(0xFFC5D96B)
+        "yellow" -> Color(0xFFF2D16B)
+        "orange" -> Color(0xFFFFA45B)
+        "red" -> Color(0xFFFF7777)
         "rose" -> Color(0xFFFF9EB5)
+        "pink" -> Color(0xFFE99AD6)
+        "indigo" -> Color(0xFF929BFF)
         else -> Color(0xFFB7A4FF)
     }
+    val accent = if (dynamicTheme) artworkAccent ?: fixedAccent else fixedAccent
     val scope = rememberCoroutineScope()
 
     var tab by remember { mutableStateOf(AppTab.HOME) }
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
+
+    LaunchedEffect(nowPlaying?.artwork, dynamicTheme) {
+        if (dynamicTheme) {
+            artworkAccent = extractArtworkAccent(nowPlaying?.artwork)
+        } else {
+            artworkAccent = null
+        }
+    }
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
@@ -301,9 +349,14 @@ private fun JDMusaxApp(
                     )
                     AppTab.SETTINGS -> SettingsScreen(
                         accentName = accentName,
+                        dynamicTheme = dynamicTheme,
                         onAccentChange = { name ->
                             accentName = name
                             settings.setAccent(name)
+                        },
+                        onDynamicThemeChange = { enabled ->
+                            dynamicTheme = enabled
+                            settings.setDynamicThemeEnabled(enabled)
                         }
                     )
                 }
