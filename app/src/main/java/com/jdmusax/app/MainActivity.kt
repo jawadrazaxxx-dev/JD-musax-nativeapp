@@ -343,7 +343,7 @@ private fun JDMusaxApp(
     }
 
     LaunchedEffect(isPlaying, nowPlaying?.id) {
-        while (isPlaying && nowPlaying != null) {
+        while (nowPlaying != null) {
             positionMs = onCurrentPosition().coerceAtLeast(0L)
             durationMs = onCurrentDuration().coerceAtLeast(0L)
             delay(250L)
@@ -479,7 +479,7 @@ private fun JDMusaxApp(
                         lyrics = lyricsText,
                         positionMs = positionMs,
                         durationMs = durationMs.takeIf { it > 0L } ?: (nowPlaying?.duration ?: 0L),
-                        onSeekTo = onSeekTo,
+                        onSeekTo = { position -> positionMs = position; onSeekTo(position) },
                         onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } }
                     )
                 } else when (tab) {
