@@ -90,14 +90,25 @@ class PlaybackService : MediaSessionService() {
     }
 
     private fun savePlaybackSession(player: Player) {
-        if (player.mediaItemCount == 0) return
         runCatching {
+            if (player.mediaItemCount == 0) {
+                sessionPrefs.edit()
+                    .remove(KEY_ITEMS)
+                    .remove(KEY_INDEX)
+                    .remove(KEY_POSITION)
+                    .apply()
+                return
+            }
+
             val items = JSONArray()
+            var savedCurrentIndex = 0
+            var savedIndex = 0
             for (index in 0 until player.mediaItemCount) {
                 val mediaItem = player.getMediaItemAt(index)
                 val metadata = mediaItem.mediaMetadata
                 val uri = mediaItem.localConfiguration?.uri?.toString().orEmpty()
                 if (uri.isBlank()) continue
+                if (index == player.currentMediaItemIndex) savedCurrentIndex = savedIndex
                 items.put(JSONObject().apply {
                     put("id", mediaItem.mediaId)
                     put("uri", uri)
@@ -105,11 +116,16 @@ class PlaybackService : MediaSessionService() {
                     put("artist", metadata.artist?.toString().orEmpty())
                     put("artwork", metadata.artworkUri?.toString().orEmpty())
                 })
+                savedIndex++
             }
-            if (items.length() == 0) return
+
+            if (items.length() == 0) {
+                sessionPrefs.edit().remove(KEY_ITEMS).remove(KEY_INDEX).remove(KEY_POSITION).apply()
+                return
+            }
             sessionPrefs.edit()
                 .putString(KEY_ITEMS, items.toString())
-                .putInt(KEY_INDEX, player.currentMediaItemIndex.coerceAtLeast(0))
+                .putInt(KEY_INDEX, savedCurrentIndex.coerceIn(0, items.length() - 1))
                 .putLong(KEY_POSITION, player.currentPosition.coerceAtLeast(0L))
                 .putBoolean(KEY_SHUFFLE, player.shuffleModeEnabled)
                 .putInt(KEY_REPEAT, player.repeatMode)
