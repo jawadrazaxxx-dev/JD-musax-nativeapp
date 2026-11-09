@@ -209,7 +209,7 @@ private suspend fun fetchTrending(): List<Track> = withContext(Dispatchers.IO) {
 
 /* ---------- UI ---------- */
 
-private data class AppPalette(
+internal data class AppPalette(
     val background: Color,
     val surface: Color,
     val surfaceVariant: Color,
@@ -217,7 +217,7 @@ private data class AppPalette(
     val muted: Color,
     val border: Color
 )
-private val LocalAppPalette = compositionLocalOf {
+internal val LocalAppPalette = compositionLocalOf {
     AppPalette(Color.Black, Color(0xFF101010), Color(0xFF1A1A1A), Color.White, Color.Gray, Color.DarkGray)
 }
 
