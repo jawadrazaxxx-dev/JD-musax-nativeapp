@@ -942,24 +942,3 @@ private fun parseLrcLyrics(raw: String): List<Pair<Long, String>> {
         (minutes * 60_000L + seconds * 1_000L + fraction) to match.groupValues[4].trim()
     }.filter { it.second.isNotBlank() }.sortedBy { it.first }
 }
- color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
-            Spacer(Modifier.weight(1f))
-            Text(queue.size.toString() + " tracks", color = palette.muted, fontSize = 12.sp)
-        }
-        LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 150.dp)) {
-            items(queue.size) { index ->
-                val item = queue[index]
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp))
-                    .background(if (index == currentIndex) palette.surfaceVariant else Color.Transparent)
-                    .clickable { onSelectTrack(index) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text((index + 1).toString(), color = if (index == currentIndex) accent else palette.muted, modifier = Modifier.width(28.dp))
-                    Column(Modifier.weight(1f)) {
-                        Text(item.title, color = palette.text, maxLines = 1, fontSize = 13.sp)
-                        Text(item.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
-                    }
-                    if (index == currentIndex) Icon(Icons.Default.Equalizer, null, tint = accent)
-                }
-            }
-        }
-    }
-}
