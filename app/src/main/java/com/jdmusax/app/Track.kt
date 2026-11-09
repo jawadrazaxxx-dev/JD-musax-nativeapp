@@ -11,11 +11,13 @@ data class Track(
     val artist: String,
     val artwork: String? = null,
     val duration: Long = 0L,
-    val streamUrl: String? = null
+    val streamUrl: String? = null,
+    val localUri: String? = null,
+    val isDownloadable: Boolean = false
 ) {
     fun mediaItem(): MediaItem = MediaItem.Builder()
         .setMediaId(id)
-        .setUri(streamUrl ?: "")
+        .setUri(localUri ?: streamUrl ?: "")
         .setMediaMetadata(
             MediaMetadata.Builder().setTitle(title).setArtist(artist)
                 .setArtworkUri(artwork?.let(Uri::parse)).build()
@@ -27,7 +29,8 @@ data class Track(
             title = json.optString("title", "Unknown track"),
             artist = json.optJSONObject("user")?.optString("name") ?: "Unknown artist",
             artwork = json.optJSONObject("artwork")?.optString("150x150"),
-            duration = json.optLong("duration") * 1000L
+            duration = json.optLong("duration") * 1000L,
+            isDownloadable = json.optBoolean("is_downloadable", false)
         )
     }
 }
