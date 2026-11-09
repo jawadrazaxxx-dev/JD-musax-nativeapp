@@ -86,6 +86,8 @@ class MainActivity : ComponentActivity() {
                 onCurrentPosition = { controller?.currentPosition ?: 0L },
                 onCurrentDuration = { controller?.duration?.takeIf { it > 0L } ?: 0L },
                 onSeekTo = { position -> controller?.seekTo(position) },
+                onShuffleChange = { enabled -> controller?.shuffleModeEnabled = enabled },
+                onRepeatModeChange = { mode -> controller?.repeatMode = mode },
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
@@ -287,7 +289,9 @@ private fun JDMusaxApp(
     onSpeedChange: (Float) -> Unit,
     onCurrentPosition: () -> Long,
     onCurrentDuration: () -> Long,
-    onSeekTo: (Long) -> Unit
+    onSeekTo: (Long) -> Unit,
+    onShuffleChange: (Boolean) -> Unit,
+    onRepeatModeChange: (Int) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -326,6 +330,8 @@ private fun JDMusaxApp(
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
     var durationMs by remember { mutableLongStateOf(0L) }
+    var shuffleEnabled by remember { mutableStateOf(false) }
+    var repeatMode by remember { mutableIntStateOf(Player.REPEAT_MODE_OFF) }
     val lyricsStore = remember { LyricsStore(appContext) }
     var lyricsText by remember(nowPlaying?.id) { mutableStateOf(nowPlaying?.let { lyricsStore.load(it.id) } ?: "") }
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
@@ -480,6 +486,10 @@ private fun JDMusaxApp(
                         positionMs = positionMs,
                         durationMs = durationMs.takeIf { it > 0L } ?: (nowPlaying?.duration ?: 0L),
                         onSeekTo = { position -> positionMs = position; onSeekTo(position) },
+                        shuffleEnabled = shuffleEnabled,
+                        repeatMode = repeatMode,
+                        onShuffleToggle = { shuffleEnabled = !shuffleEnabled; onShuffleChange(shuffleEnabled) },
+                        onRepeatCycle = { repeatMode = when (repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onRepeatModeChange(repeatMode) },
                         onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } }
                     )
                 } else when (tab) {
@@ -912,6 +922,7 @@ private fun NowPlayingScreen(
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
     onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
     lyrics: String, positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
+    shuffleEnabled: Boolean, repeatMode: Int, onShuffleToggle: () -> Unit, onRepeatCycle: () -> Unit,
     onLyricsChange: (String) -> Unit
 ) {
     Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -936,7 +947,11 @@ private fun NowPlayingScreen(
             Text(formatPlaybackTime(positionMs), color = palette.muted, fontSize = 11.sp)
             Text(formatPlaybackTime(durationMs), color = palette.muted, fontSize = 11.sp)
         }
-        Spacer(Modifier.height(12.dp))
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onShuffleToggle) { Icon(Icons.Default.Shuffle, "Shuffle", tint = if (shuffleEnabled) accent else palette.muted) }
+            IconButton(onClick = onRepeatCycle) { Icon(if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Default.RepeatOne else Icons.Default.Repeat, "Repeat", tint = if (repeatMode != Player.REPEAT_MODE_OFF) accent else palette.muted) }
+        }
+        Spacer(Modifier.height(4.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onPrevious, enabled = currentIndex > 0) { Icon(Icons.Default.SkipPrevious, "Previous", tint = palette.text, modifier = Modifier.size(34.dp)) }
             FilledIconButton(onClick = onToggle, modifier = Modifier.size(68.dp), colors = IconButtonDefaults.filledIconButtonColors(containerColor = accent)) {
