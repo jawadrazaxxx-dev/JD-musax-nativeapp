@@ -370,11 +370,11 @@ private fun JDMusaxApp(
                                 icon = { Icon(t.icon, contentDescription = null) },
                                 label = { Text(t.label) },
                                 colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = Color.Black,
+                                    selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
                                     selectedTextColor = accent,
                                     indicatorColor = accent,
-                                    unselectedIconColor = Color.Gray,
-                                    unselectedTextColor = Color.Gray
+                                    unselectedIconColor = palette.muted,
+                                    unselectedTextColor = palette.muted
                                 )
                             )
                         }
@@ -516,9 +516,9 @@ private fun HomeScreen(
             keyboardActions = KeyboardActions(onSearch = { onSearch() }),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = accent,
-                unfocusedBorderColor = Color.DarkGray,
-                focusedTextColor = Color.White,
-                unfocusedTextColor = Color.White
+                unfocusedBorderColor = palette.border,
+                focusedTextColor = palette.text,
+                unfocusedTextColor = palette.text
             )
         )
         Spacer(Modifier.height(12.dp))
@@ -657,8 +657,12 @@ private fun TrackContent(
         }
         error != null -> EmptyState("Something went wrong", error)
         tracks.isEmpty() -> EmptyState(emptyTitle, emptySubtitle)
-        else -> LazyColumn(Modifier.fillMaxSize()) {
-            items(tracks) { track ->
+        else -> LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(vertical = 6.dp, horizontal = 2.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            items(tracks, key = { it.id }) { track ->
                 TrackRow(
                     track = track,
                     accent = accent,
