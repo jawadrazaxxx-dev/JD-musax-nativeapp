@@ -16,9 +16,12 @@ class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
-        if (section == "General Audiobooks") searchLibriVox(query.trim())
-        else listOf("ur", "en", "ar").map { language ->
-            async { searchIslamHouse(query.trim(), language, section) }
+        if (section == "General Audiobooks") return@withContext searchLibriVox(query.trim())
+        val languageOnly = mapOf("Urdu Audio" to "ur", "English Audio" to "en", "Arabic Audio" to "ar")[section]
+        val tradition = if (languageOnly != null) "All Islamic" else section
+        val languages = languageOnly?.let(::listOf) ?: listOf("ur", "en", "ar")
+        languages.map { language ->
+            async { searchIslamHouse(query.trim(), language, tradition) }
         }.awaitAll().flatten().distinctBy { it.id }.take(60)
     }
 
