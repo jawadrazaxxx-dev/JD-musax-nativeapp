@@ -20,11 +20,13 @@ data class AudioBand(
 class AudioEffectsController {
     private var equalizer: Equalizer? = null
     private var visualizer: Visualizer? = null
+    private var audioSessionId: Int = 0
     private val mainHandler = Handler(Looper.getMainLooper())
 
     @Synchronized
     fun attach(audioSessionId: Int): List<AudioBand> {
         release()
+        this.audioSessionId = audioSessionId
         if (audioSessionId <= 0) return emptyList()
         return runCatching {
             Equalizer(0, audioSessionId).also {
@@ -85,19 +87,14 @@ class AudioEffectsController {
     @Synchronized
     fun setVisualizerEnabled(enabled: Boolean, onLevels: (List<Float>) -> Unit): Boolean {
         if (!enabled) {
-            visualizer?.runCatching {
-                setDataCaptureListener(null, 0, false, false)
-                enabled = false
-                release()
-            }
+            runCatching { visualizer?.apply { setDataCaptureListener(null, 0, false, false); enabled = false; release() } }
             visualizer = null
             onLevels(emptyList())
             return true
         }
-        val sessionId = runCatching { equalizer?.getId() }.getOrNull() ?: return false
+        if (audioSessionId <= 0) return false
         return runCatching {
-            val current = visualizer ?: VisualizerAudioSession.currentSessionId?.let(::Visualizer)
-                ?: return false
+            val current = visualizer ?: Visualizer(audioSessionId)
             visualizer = current
             val range = current.captureSizeRange
             val desired = 1024.coerceIn(range[0], range[1])
@@ -128,21 +125,10 @@ class AudioEffectsController {
 
     @Synchronized
     fun release() {
-        visualizer?.runCatching {
-            setDataCaptureListener(null, 0, false, false)
-            enabled = false
-            release()
-        }
+        runCatching { visualizer?.apply { setDataCaptureListener(null, 0, false, false); enabled = false; release() } }
         visualizer = null
-        equalizer?.runCatching {
-            enabled = false
-            release()
-        }
+        runCatching { equalizer?.apply { enabled = false; release() } }
         equalizer = null
+        audioSessionId = 0
     }
-}
-
-/** Holds the active ExoPlayer session ID for the visualizer factory. */
-object VisualizerAudioSession {
-    @Volatile var currentSessionId: Int? = null
 }
