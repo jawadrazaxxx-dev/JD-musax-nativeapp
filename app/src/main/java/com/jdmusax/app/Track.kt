@@ -15,7 +15,8 @@ data class Track(
     val isDownloadable: Boolean = false,
     val language: String = "",
     val contentType: String = "Audiobook",
-    val tradition: String = "General"
+    val tradition: String = "General",
+    val externalUrl: String? = null
 ) {
     fun mediaItem(): MediaItem = MediaItem.Builder()
         .setMediaId(id)
