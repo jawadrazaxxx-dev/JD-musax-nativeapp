@@ -522,12 +522,14 @@ private fun JDMusaxApp(
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var searchGeneration by remember { mutableIntStateOf(0) }
 
-    // Explore / trending state
+    // Explore / featured state
     var trending by remember { mutableStateOf(emptyList<Track>()) }
     var trendingLoading by remember { mutableStateOf(false) }
     var trendingError by remember { mutableStateOf<String?>(null) }
     var trendingLoaded by remember { mutableStateOf(false) }
+    var featuredGeneration by remember { mutableIntStateOf(0) }
 
     fun play(track: Track, queue: List<Track>) {
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
@@ -551,27 +553,33 @@ private fun JDMusaxApp(
     }
 
     fun runSearch(category: String = selectedCategory) {
+        val requestId = ++searchGeneration
         scope.launch {
             searching = true
             searchError = null
-            runCatching {
+            val response = runCatching {
                 if (query.isBlank()) repo.featured(category) else repo.search(query, category)
             }
-                .onSuccess { results = it }
-                .onFailure { searchError = it.message ?: "Search failed" }
-            searching = false
+            if (requestId == searchGeneration) {
+                response.onSuccess { results = it }
+                    .onFailure { searchError = it.message ?: "Search failed" }
+                searching = false
+            }
         }
     }
 
     fun loadTrending(category: String = selectedCategory) {
         selectedCategory = category
+        val requestId = ++featuredGeneration
         scope.launch {
             trendingLoading = true
             trendingError = null
-            runCatching { repo.featured(category) }
-                .onSuccess { trending = it; trendingLoaded = true }
-                .onFailure { trendingError = it.message ?: "Could not load trending" }
-            trendingLoading = false
+            val response = runCatching { repo.featured(category) }
+            if (requestId == featuredGeneration) {
+                response.onSuccess { trending = it; trendingLoaded = true }
+                    .onFailure { trendingError = it.message ?: "Could not load featured audio" }
+                trendingLoading = false
+            }
         }
     }
 
