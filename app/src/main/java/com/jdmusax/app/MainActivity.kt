@@ -553,7 +553,7 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All Islamic") }
+    var selectedCategory by remember { mutableStateOf("Shia Sources") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -810,42 +810,26 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("All Audio Sources", "Shia Sources", "Audiobooks", "Nohay & Marsiya", "Quran & Recitation", "Majlis & Lectures", "Islamic Podcasts", "All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
+private val musicCategories = listOf(
+    "Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer",
+    "Majalis", "Duas & Ziyarat", "Manqabat", "Islamic Podcasts", "Shia Sources"
+)
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 6.dp)
+    val selectedIndex = musicCategories.indexOf(selected).coerceAtLeast(0)
+    ScrollableTabRow(
+        selectedTabIndex = selectedIndex,
+        edgePadding = 0.dp,
+        containerColor = Color.Transparent,
+        contentColor = accent,
+        divider = {}
     ) {
-        items(musicCategories) { category ->
-            FilterChip(
+        musicCategories.forEach { category ->
+            Tab(
                 selected = selected == category,
                 onClick = { onSelected(category) },
-                label = { Text(category, maxLines = 1) },
-                leadingIcon = {
-                    Icon(
-                        when (category) {
-                            "Urdu Audio", "English Audio", "Arabic Audio" -> Icons.Default.Language
-                            "Comparative Islamic Studies" -> Icons.Default.CompareArrows
-                            "Other Islamic Perspectives" -> Icons.Default.Public
-                            "General Audiobooks" -> Icons.Default.Headphones
-                            "Shia Sources", "All Audio Sources" -> Icons.Default.OpenInNew
-                            "Audiobooks" -> Icons.Default.MenuBook
-                            "Nohay & Marsiya" -> Icons.Default.MusicNote
-                            "Quran & Recitation" -> Icons.Default.AutoStories
-                            "Majlis & Lectures", "Islamic Podcasts" -> Icons.Default.Headphones
-                            else -> Icons.Default.MenuBook
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = accent,
-                    selectedLabelColor = Color.Black
-                )
+                text = { Text(category, maxLines = 1, fontSize = 12.sp) }
             )
         }
     }
@@ -874,7 +858,7 @@ private fun HomeScreen(
     val palette = LocalAppPalette.current
     val dailyMix = (mostPlayedTracks.take(8) + recentTracks).distinctBy { it.id }.take(12)
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("JD musax", "AUDIOBOOKS • ISLAMIC AUDIO • YOUR LIBRARY")
+        ScreenHeader("SHIAudio", "SHIA AUDIO • BOOKS • QURAN • AZADARI")
         if (dailyMix.isNotEmpty()) {
             HomeListeningHighlights(
                 recentTrack = recentTracks.firstOrNull(),
@@ -996,7 +980,7 @@ private fun ExploreScreen(
     val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { ScreenHeader("Discover", "FEATURED AUDIO LIBRARIES") }
+            Column(Modifier.weight(1f)) { ScreenHeader("Discover", "EXPLORE SHIA AUDIO COLLECTIONS") }
             IconButton(onClick = onRefresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = accent)
             }
