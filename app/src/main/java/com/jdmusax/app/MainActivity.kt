@@ -1066,11 +1066,28 @@ private fun NowPlayingScreen(
             Icon(Icons.Default.GraphicEq, null, tint = accent)
         }
         Spacer(Modifier.height(16.dp))
-        AsyncImage(model = track.artwork, contentDescription = "Album artwork",
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(1f).clip(RoundedCornerShape(26.dp)).background(palette.surfaceVariant))
+        Box(
+            Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(1f)
+                .clip(RoundedCornerShape(26.dp)).background(palette.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!track.artwork.isNullOrBlank()) {
+                AsyncImage(model = track.artwork, contentDescription = "${track.contentType} cover", modifier = Modifier.fillMaxSize())
+            } else {
+                Icon(
+                    if (track.contentType.contains("lecture", true)) Icons.Default.Headphones else Icons.Default.MenuBook,
+                    contentDescription = null, tint = accent, modifier = Modifier.size(72.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
+        Text(
+            listOf(track.contentType, when (track.language.lowercase()) { "ur" -> "Urdu"; "en" -> "English"; "ar" -> "Arabic"; else -> track.language })
+                .filter { it.isNotBlank() }.joinToString(" • "),
+            color = accent, fontSize = 12.sp
+        )
         val progress = if (durationMs > 0L) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
         Slider(value = progress, onValueChange = { fraction -> if (durationMs > 0L) onSeekTo((fraction * durationMs).toLong()) },
             enabled = durationMs > 0L, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
