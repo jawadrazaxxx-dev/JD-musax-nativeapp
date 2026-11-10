@@ -149,6 +149,8 @@ class MainActivity : ComponentActivity() {
                 })
                 controller = c
                 playing = c.isPlaying
+                audioBands = audioEffects.attach(c.audioSessionId)
+                audioPresets = audioEffects.presetNames()
                 syncPlaybackSnapshot(c)
             }
         }, MoreExecutors.directExecutor())
