@@ -63,7 +63,7 @@ class AudioLibraryRepository {
                     .orEmpty().ifBlank { "IslamHouse" }
                 val tradition = classifyTradition(item, detail)
                 Track(
-                    id = "islamhouse:$id", title = item.optString("title", "Islamic audio"),
+                    id = "islamhouse:$type:$id", title = item.optString("title", "Islamic audio"),
                     artist = publisher, artwork = item.optString("image").takeIf { it.startsWith("https://") },
                     streamUrl = audio?.optString("url")?.takeIf { it.startsWith("https://") },
                     isDownloadable = audio?.optString("url")?.startsWith("https://") == true,
