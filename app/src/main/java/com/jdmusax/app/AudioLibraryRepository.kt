@@ -68,7 +68,7 @@ class AudioLibraryRepository {
             (section == "All Audio Sources" || section in source.categories) &&
                 (query.isBlank() || (source.name + " " + source.description).contains(query, ignoreCase = true))
         }.distinctBy { it.url }.map { source ->
-            Track(id = "source:" + source.name.lowercase().replace(Regex("[^a-z0-9]+"), "-"), title = source.name, artist = source.description, contentType = "External audio source", language = source.language, tradition = if ("Shia Sources" in source.categories) "Shia Library" else "Audio Library", externalUrl = source.url, isDownloadable = false)
+            Track(id = "source:" + source.name.lowercase().replace(Regex("[^a-z0-9]+"), "-"), title = source.name, artist = source.description, contentType = "External audio source", language = source.language, tradition = "Shia Library", externalUrl = source.url, isDownloadable = false)
         }
     }
 
