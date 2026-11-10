@@ -17,6 +17,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -35,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -212,17 +214,30 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 },
+                onEditQueue = { tracks, startIndex, position ->
+                    controller?.let { c ->
+                        val resume = c.isPlaying
+                        if (tracks.isEmpty()) {
+                            c.clearMediaItems()
+                        } else {
+                            c.setMediaItems(tracks.map { it.mediaItem() }, startIndex.coerceIn(0, tracks.lastIndex), position.coerceAtLeast(0L))
+                            c.prepare()
+                            if (resume) c.play()
+                        }
+                    }
+                },
                 onDownload = { track ->
                     val url = track.streamUrl
                     if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
-                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "JD-musax-audio" }
+                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "SHIAudio-audio" }
                         val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
                         val request = DownloadManager.Request(Uri.parse(url))
                             .setTitle(track.title)
                             .setDescription("Downloading audio for offline listening")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.$extension")
-                        (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "SHIAudio/$safeName.$extension")
+                        val downloadId = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                        OfflineAudioStore(applicationContext).remember(track, downloadId)
                     }
                 }
             )
@@ -263,7 +278,7 @@ class ListeningHistoryStore(context: Context) {
             put("artwork", track.artwork ?: ""); put("duration", track.duration)
             put("localUri", track.localUri ?: ""); put("streamUrl", track.streamUrl ?: "")
             put("downloadable", track.isDownloadable); put("language", track.language)
-            put("contentType", track.contentType); put("tradition", track.tradition)
+            put("contentType", track.contentType); put("tradition", track.tradition); put("externalUrl", track.externalUrl ?: "")
             put("plays", count); put("playedAt", System.currentTimeMillis())
         })
         val array = JSONArray()
@@ -276,7 +291,7 @@ class ListeningHistoryStore(context: Context) {
         duration = item.optLong("duration", 0L), localUri = item.optString("localUri").ifBlank { null },
         streamUrl = item.optString("streamUrl").ifBlank { null }, isDownloadable = item.optBoolean("downloadable", false),
         language = item.optString("language"), contentType = item.optString("contentType", "Audiobook"),
-        tradition = item.optString("tradition", "General")
+        tradition = item.optString("tradition", "General"), externalUrl = item.optString("externalUrl").ifBlank { null }
     )
     fun recent(): List<Track> = read().sortedByDescending { it.optLong("playedAt") }.map(::toTrack)
     fun mostPlayed(): List<Track> = read().sortedWith(compareByDescending<JSONObject> { it.optInt("plays") }.thenByDescending { it.optLong("playedAt") }).map(::toTrack)
@@ -301,7 +316,8 @@ class LibraryStore(context: Context) {
                         streamUrl = o.optString("streamUrl").ifBlank { null },
                         isDownloadable = o.optBoolean("isDownloadable", false),
                         language = o.optString("language"), contentType = o.optString("contentType", "Audiobook"),
-                        tradition = o.optString("tradition", "General")
+                        tradition = o.optString("tradition", "General"),
+                        externalUrl = o.optString("externalUrl").ifBlank { null }
                     )
                 }
             }
@@ -323,6 +339,7 @@ class LibraryStore(context: Context) {
                 put("language", t.language)
                 put("contentType", t.contentType)
                 put("tradition", t.tradition)
+                put("externalUrl", t.externalUrl ?: "")
             })
         }
         prefs.edit().putString("tracks", arr.toString()).apply()
@@ -377,6 +394,7 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     EXPLORE("Discover", Icons.Default.Explore),
     LIBRARY("Library", Icons.Default.MenuBook),
     SETTINGS("Settings", Icons.Default.Settings),
+    INSIGHTS("Insights", Icons.Default.Insights),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
 
@@ -398,6 +416,7 @@ private fun JDMusaxApp(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onPlayQueue: (List<Track>, Int) -> Unit,
+    onEditQueue: (List<Track>, Int, Long) -> Unit,
     onDownload: (Track) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onCurrentPosition: () -> Long,
@@ -411,6 +430,7 @@ private fun JDMusaxApp(
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
+    var audioTheme by remember { mutableStateOf(settings.getAudioTheme()) }
     var appearanceMode by remember { mutableStateOf(settings.getAppearanceMode()) }
     var artworkAccent by remember { mutableStateOf<Color?>(null) }
     val fixedAccent = when (accentName) {
@@ -456,6 +476,16 @@ private fun JDMusaxApp(
     var bookmarkTracks by remember { mutableStateOf(bookmarkStore.load()) }
     var recentTracks by remember { mutableStateOf(historyStore.recent()) }
     var mostPlayedTracks by remember { mutableStateOf(historyStore.mostPlayed()) }
+    val playlistStore = remember { PlaylistStore(appContext) }
+    var playlists by remember { mutableStateOf(playlistStore.load()) }
+    val progressStore = remember { ListeningProgressStore(appContext) }
+    val analyticsStore = remember { ListeningAnalyticsStore(appContext) }
+    val challengeStore = remember { ListeningChallengeStore(appContext) }
+    val offlineStore = remember { OfflineAudioStore(appContext) }
+    var listeningSnapshot by remember { mutableStateOf(analyticsStore.snapshot()) }
+    var challenge by remember { mutableStateOf(challengeStore.load()) }
+    var offlineTracks by remember { mutableStateOf(offlineStore.completed().map { item -> Track(id = "download:${item.downloadId}", title = item.title, artist = "Downloaded audio", localUri = item.uri.toString()) }) }
+    var savedProgressMs by remember(nowPlaying?.id) { mutableLongStateOf(nowPlaying?.let { progressStore.load(it.id) } ?: 0L) }
 
     LaunchedEffect(sessionTracks, sessionIndex) {
         if (sessionTracks.isNotEmpty() && sessionIndex in sessionTracks.indices) {
@@ -507,6 +537,11 @@ private fun JDMusaxApp(
         while (isPlaying && nowPlaying != null) {
             delay(500L)
             refreshPlaybackPosition()
+            nowPlaying?.let { track ->
+                progressStore.save(track.id, positionMs)
+                analyticsStore.record(track, 500L)
+                listeningSnapshot = analyticsStore.snapshot()
+            }
         }
     }
 
@@ -520,7 +555,7 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("All Islamic") }
+    var selectedCategory by remember { mutableStateOf("Shia Audiobooks") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -533,7 +568,13 @@ private fun JDMusaxApp(
     var trendingLoaded by remember { mutableStateOf(false) }
     var featuredGeneration by remember { mutableIntStateOf(0) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     fun play(track: Track, queue: List<Track>) {
+        if (!track.externalUrl.isNullOrBlank()) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
+            return
+        }
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
         playbackQueue = safeQueue
         playbackIndex = safeQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
@@ -597,6 +638,13 @@ private fun JDMusaxApp(
 
     LaunchedEffect(tab) {
         if (tab == AppTab.EXPLORE && !trendingLoaded && !trendingLoading) loadTrending()
+        if (tab == AppTab.INSIGHTS) {
+            listeningSnapshot = analyticsStore.snapshot()
+            offlineTracks = offlineStore.completed().map { item ->
+                Track(id = "download:${item.downloadId}", title = item.title, artist = "Downloaded audio", localUri = item.uri.toString())
+            }
+            challenge = challengeStore.load()
+        }
     }
 
     BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
@@ -613,7 +661,7 @@ private fun JDMusaxApp(
             containerColor = palette.background,
             bottomBar = {
                 NavigationBar(containerColor = palette.surface) {
-                    AppTab.values().forEach { t ->
+                    AppTab.values().filter { it != AppTab.PLAYER }.forEach { t ->
                         NavigationBarItem(
                             selected = tab == t,
                             onClick = { tab = t },
@@ -635,11 +683,13 @@ private fun JDMusaxApp(
                 if (tab == AppTab.PLAYER && nowPlaying != null) {
                     NowPlayingScreen(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
-                        isPlaying = isPlaying, palette = palette, accent = accent, speed = playbackSpeed,
+                        isPlaying = isPlaying, palette = palette, accent = accent, audioTheme = audioTheme, speed = playbackSpeed,
                         sleepMinutes = sleepMinutes, onClose = { tab = AppTab.HOME }, onToggle = onToggle,
                         onPrevious = onPrevious,
                         onNext = onNext,
                         onSelectTrack = { skipTo(it) },
+                        onQueueEdit = onEditQueue,
+                        availableTracks = (results + trending + saved.toList()).distinctBy { it.id },
                         onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
                         onSleepTimerChange = { sleepMinutes = it },
                         lyrics = lyricsText,
@@ -654,7 +704,10 @@ private fun JDMusaxApp(
                         repeatMode = repeatMode,
                         onShuffleToggle = { shuffleEnabled = !shuffleEnabled; onShuffleChange(shuffleEnabled) },
                         onRepeatCycle = { repeatMode = when (repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onRepeatModeChange(repeatMode) },
-                        onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } }
+                        onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } },
+                        savedProgressMs = savedProgressMs,
+                        onSaveProgress = { nowPlaying?.let { progressStore.save(it.id, positionMs); savedProgressMs = positionMs } },
+                        onResumeProgress = { nowPlaying?.let { onSeekTo(progressStore.load(it.id)); savedProgressMs = progressStore.load(it.id) } }
                     )
                 } else when (tab) {
                     AppTab.HOME -> HomeScreen(
@@ -689,11 +742,28 @@ private fun JDMusaxApp(
                         onToggleSave = { toggleSave(it) },
                         onDownload = onDownload
                     )
+                    AppTab.INSIGHTS -> ListeningInsightsScreen(
+                        snapshot = listeningSnapshot,
+                        challenge = challenge,
+                        todayMs = listeningSnapshot.dailyTotals[ java.time.LocalDate.now() ] ?: 0L,
+                        offlineTracks = offlineTracks,
+                        accent = accent,
+                        onGoalChange = { minutes -> challenge = challenge.copy(goalMinutes = minutes); challengeStore.save(challenge) },
+                        onChallengeToggle = { enabled -> challenge = challenge.copy(enabled = enabled); challengeStore.save(challenge) },
+                        onPlayOffline = { track -> play(track, listOf(track)) },
+                        onRemoveOffline = { id -> if (id > 0L) { offlineStore.remove(id); offlineTracks = offlineStore.completed().map { item -> Track(id = "download:${item.downloadId}", title = item.title, artist = "Downloaded audio", localUri = item.uri.toString()) } } }
+                    )
                     AppTab.LIBRARY -> LibraryScreen(
                         tracks = saved.toList(),
                         bookmarkTracks = bookmarkTracks,
                         recentTracks = recentTracks,
                         mostPlayedTracks = mostPlayedTracks,
+                        playlists = playlists,
+                        onCreatePlaylist = { name -> playlists = playlistStore.create(name, saved.toList()) },
+                        onDeletePlaylist = { id -> playlists = playlistStore.delete(id) },
+                        onRenamePlaylist = { id, name -> playlists = playlistStore.rename(id, name) },
+                        onReorderPlaylist = { from, to -> playlists = playlistStore.reorder(from, to) },
+                        onAddFavoritesToPlaylist = { id -> playlists = playlistStore.addTracks(id, saved.toList()) },
                         accent = accent,
                         savedIds = savedIds,
                         onPlay = { track, queue -> play(track, queue) },
@@ -707,6 +777,8 @@ private fun JDMusaxApp(
                     AppTab.SETTINGS -> SettingsScreen(
                         accentName = accentName,
                         dynamicTheme = dynamicTheme,
+                        audioTheme = audioTheme,
+                        onAudioThemeChange = { theme -> audioTheme = theme; settings.setAudioTheme(theme) },
                         onAccentChange = { name ->
                             accentName = name
                             settings.setAccent(name)
@@ -740,37 +812,26 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
+private val musicCategories = listOf(
+    "Shia Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer",
+    "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts"
+)
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
-    LazyRow(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 6.dp)
+    val selectedIndex = musicCategories.indexOf(selected).coerceAtLeast(0)
+    ScrollableTabRow(
+        selectedTabIndex = selectedIndex,
+        edgePadding = 0.dp,
+        containerColor = Color.Transparent,
+        contentColor = accent,
+        divider = {}
     ) {
-        items(musicCategories) { category ->
-            FilterChip(
+        musicCategories.forEach { category ->
+            Tab(
                 selected = selected == category,
                 onClick = { onSelected(category) },
-                label = { Text(category, maxLines = 1) },
-                leadingIcon = {
-                    Icon(
-                        when (category) {
-                            "Urdu Audio", "English Audio", "Arabic Audio" -> Icons.Default.Language
-                            "Comparative Islamic Studies" -> Icons.Default.CompareArrows
-                            "Other Islamic Perspectives" -> Icons.Default.Public
-                            "General Audiobooks" -> Icons.Default.Headphones
-                            else -> Icons.Default.MenuBook
-                        },
-                        contentDescription = null,
-                        modifier = Modifier.size(16.dp)
-                    )
-                },
-                colors = FilterChipDefaults.filterChipColors(
-                    selectedContainerColor = accent,
-                    selectedLabelColor = Color.Black
-                )
+                text = { Text(category, maxLines = 1, fontSize = 12.sp) }
             )
         }
     }
@@ -799,7 +860,7 @@ private fun HomeScreen(
     val palette = LocalAppPalette.current
     val dailyMix = (mostPlayedTracks.take(8) + recentTracks).distinctBy { it.id }.take(12)
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("JD musax", "AUDIOBOOKS • ISLAMIC AUDIO • YOUR LIBRARY")
+        ScreenHeader("SHIAudio", "SHIA AUDIO • QURAN • AZADARI")
         if (dailyMix.isNotEmpty()) {
             HomeListeningHighlights(
                 recentTrack = recentTracks.firstOrNull(),
@@ -810,7 +871,6 @@ private fun HomeScreen(
                 onContinue = { recentTracks.firstOrNull()?.let(onContinue) }
             )
         }
-        CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
@@ -921,7 +981,7 @@ private fun ExploreScreen(
     val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { ScreenHeader("Discover", "FEATURED AUDIO LIBRARIES") }
+            Column(Modifier.weight(1f)) { ScreenHeader("Discover", "EXPLORE SHIA AUDIO COLLECTIONS") }
             IconButton(onClick = onRefresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = accent)
             }
@@ -950,6 +1010,12 @@ private fun LibraryScreen(
     bookmarkTracks: List<Track>,
     recentTracks: List<Track>,
     mostPlayedTracks: List<Track>,
+    playlists: List<AudioPlaylist>,
+    onCreatePlaylist: (String) -> Unit,
+    onDeletePlaylist: (String) -> Unit,
+    onRenamePlaylist: (String, String) -> Unit,
+    onReorderPlaylist: (Int, Int) -> Unit,
+    onAddFavoritesToPlaylist: (String) -> Unit,
     accent: Color,
     savedIds: Set<String>,
     onPlay: (Track, List<Track>) -> Unit,
@@ -970,11 +1036,17 @@ private fun LibraryScreen(
         if (imported.isNotEmpty()) onImport(imported)
     }
     var selectedCollection by remember { mutableStateOf("Favorites") }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    var playlistName by remember { mutableStateOf("") }
+    var showRenamePlaylist by remember { mutableStateOf(false) }
+    var renamedPlaylist by remember { mutableStateOf("") }
+    val activePlaylist = playlists.firstOrNull { selectedCollection == it.id }
+    val activePlaylistIndex = playlists.indexOfFirst { it.id == selectedCollection }
     val visibleTracks = when (selectedCollection) {
         "Bookmarks" -> bookmarkTracks
         "Recently played" -> recentTracks
         "Most played" -> mostPlayedTracks
-        else -> tracks
+        else -> activePlaylist?.tracks ?: tracks
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -985,18 +1057,68 @@ private fun LibraryScreen(
                 Text("Import")
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf("Favorites", "Bookmarks", "Recently played", "Most played").forEach { collection ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("LISTENING SNAPSHOT", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text("${recentTracks.size} recent · ${mostPlayedTracks.size} most played · ${tracks.size} favorites", color = palette.muted, fontSize = 11.sp)
+            }
+            FilledTonalButton(onClick = { showCreatePlaylist = true }, enabled = tracks.isNotEmpty()) {
+                Icon(Icons.Default.PlaylistAdd, contentDescription = null)
+                Text("New playlist")
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            items(listOf("Favorites", "Bookmarks", "Recently played", "Most played")) { collection ->
                 FilterChip(selected = selectedCollection == collection, onClick = { selectedCollection = collection }, label = { Text(collection, fontSize = 11.sp) })
             }
+            items(playlists, key = { it.id }) { playlist ->
+                FilterChip(selected = selectedCollection == playlist.id, onClick = { selectedCollection = playlist.id }, label = { Text(playlist.name, fontSize = 11.sp) })
+            }
+        }
+        if (activePlaylist != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${activePlaylist.tracks.size} tracks · ${activePlaylist.name}", color = palette.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onAddFavoritesToPlaylist(activePlaylist.id) }) { Text("Add favorites", color = accent) }
+                IconButton(onClick = { renamedPlaylist = activePlaylist.name; showRenamePlaylist = true }) { Icon(Icons.Default.Edit, "Rename playlist", tint = accent) }
+                IconButton(onClick = { onReorderPlaylist(activePlaylistIndex, activePlaylistIndex - 1) }, enabled = activePlaylistIndex > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move playlist up") }
+                IconButton(onClick = { onReorderPlaylist(activePlaylistIndex, activePlaylistIndex + 1) }, enabled = activePlaylistIndex in 0 until playlists.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move playlist down") }
+                TextButton(onClick = { onDeletePlaylist(activePlaylist.id); selectedCollection = "Favorites" }) { Text("Delete", color = accent) }
+            }
+        }
+        if (showRenamePlaylist && activePlaylist != null) {
+            AlertDialog(
+                onDismissRequest = { showRenamePlaylist = false },
+                title = { Text("Rename playlist") },
+                text = { OutlinedTextField(value = renamedPlaylist, onValueChange = { renamedPlaylist = it.take(48) }, singleLine = true, label = { Text("Playlist name") }) },
+                confirmButton = { TextButton(onClick = { onRenamePlaylist(activePlaylist.id, renamedPlaylist); showRenamePlaylist = false }) { Text("Save") } },
+                dismissButton = { TextButton(onClick = { showRenamePlaylist = false }) { Text("Cancel") } }
+            )
+        }
+        if (showCreatePlaylist) {
+            AlertDialog(
+                onDismissRequest = { showCreatePlaylist = false },
+                title = { Text("Create playlist") },
+                text = {
+                    Column {
+                        Text("Create a playlist from your current Favorites collection.", color = palette.muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(value = playlistName, onValueChange = { playlistName = it.take(48) }, label = { Text("Playlist name") }, singleLine = true)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { onCreatePlaylist(playlistName); playlistName = ""; showCreatePlaylist = false }) { Text("Create") }
+                },
+                dismissButton = { TextButton(onClick = { showCreatePlaylist = false }) { Text("Cancel") }
+                }
+            )
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = false,
                 error = null,
                 tracks = visibleTracks,
-                emptyTitle = when (selectedCollection) { "Bookmarks" -> "No bookmarks yet"; "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> "Nothing saved yet" },
-                emptySubtitle = when (selectedCollection) { "Bookmarks" -> "Bookmark a book from the player to keep it here."; "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> "Tap the heart on any track to keep it here." },
+                emptyTitle = when (selectedCollection) { "Bookmarks" -> "No bookmarks yet"; "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> if (activePlaylist != null) "This playlist is empty" else "Nothing saved yet" },
+                emptySubtitle = when (selectedCollection) { "Bookmarks" -> "Bookmark a book from the player to keep it here."; "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> if (activePlaylist != null) "Add favorites to your library, then create a new playlist." else "Tap the heart on any track to keep it here." },
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = { track -> onPlay(track, visibleTracks) },
@@ -1143,7 +1265,7 @@ private fun TrackRow(
                 Icon(Icons.Default.Download, contentDescription = "Download", tint = accent)
             }
         }
-        Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
+        Icon(if (track.externalUrl != null) Icons.Default.OpenInNew else Icons.Default.PlayCircle, contentDescription = if (track.externalUrl != null) "Open source" else "Play", tint = accent, modifier = Modifier.size(28.dp))
     }
     }
 }
@@ -1151,16 +1273,31 @@ private fun TrackRow(
 @Composable
 private fun NowPlayingScreen(
     track: Track, queue: List<Track>, currentIndex: Int, isPlaying: Boolean,
-    palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
+    palette: AppPalette, accent: Color, audioTheme: String, speed: Float, sleepMinutes: Int,
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
-    onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
+    onSelectTrack: (Int) -> Unit, onQueueEdit: (List<Track>, Int, Long) -> Unit,
+    availableTracks: List<Track>, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
     lyrics: String, isBookmarked: Boolean, onBookmarkToggle: () -> Unit,
     visualizerLevels: List<Float>, visualizerEnabled: Boolean,
     positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
     shuffleEnabled: Boolean, repeatMode: Int, onShuffleToggle: () -> Unit, onRepeatCycle: () -> Unit,
-    onLyricsChange: (String) -> Unit
+    onLyricsChange: (String) -> Unit,
+    savedProgressMs: Long,
+    onSaveProgress: () -> Unit,
+    onResumeProgress: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    val themeMotion by animateFloatAsState(targetValue = if (isPlaying) 1f else 0.25f, label = "audioThemeMotion")
+    val themeColors = when (audioTheme) {
+        "aurora" -> listOf(Color(0xFF164E63), Color(0xFF312E81), palette.background)
+        "neon" -> listOf(Color(0xFF3B0764), Color(0xFF0E7490), palette.background)
+        "ocean" -> listOf(Color(0xFF082F49), Color(0xFF155E75), palette.background)
+        "sunset" -> listOf(Color(0xFF7C2D12), Color(0xFF9D174D), palette.background)
+        "forest" -> listOf(Color(0xFF14532D), Color(0xFF365314), palette.background)
+        "artwork" -> listOf(accent.copy(alpha = 0.30f), palette.background, accent.copy(alpha = 0.10f))
+        else -> listOf(palette.background, palette.background, palette.background)
+    }
+    val themeBrush = Brush.linearGradient(themeColors.mapIndexed { index, color -> color.copy(alpha = if (index == 2) 1f else color.alpha * themeMotion) })
+    Column(Modifier.fillMaxSize().background(themeBrush).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Default.KeyboardArrowDown, "Close player", tint = palette.text) }
             Spacer(Modifier.weight(1f))
@@ -1186,11 +1323,22 @@ private fun NowPlayingScreen(
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
             FilledTonalButton(onClick = onBookmarkToggle) {
                 Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text(if (isBookmarked) "Bookmarked" else "Bookmark book")
+            }
+            FilledTonalButton(onClick = onSaveProgress) {
+                Icon(Icons.Default.Flag, contentDescription = null)
+                Spacer(Modifier.width(5.dp))
+                Text("Save position")
+            }
+        }
+        if (savedProgressMs > 10_000L && savedProgressMs < durationMs - 10_000L) {
+            TextButton(onClick = onResumeProgress) {
+                Icon(Icons.Default.RestartAlt, contentDescription = null)
+                Text("Resume saved position · ${formatPlaybackTime(savedProgressMs)}", color = accent)
             }
         }
         if (visualizerEnabled) {
@@ -1265,10 +1413,35 @@ private fun NowPlayingScreen(
             OutlinedTextField(value = lyrics, onValueChange = onLyricsChange, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 140.dp),
                 placeholder = { Text("[00:12.00] Lyrics line…") }, label = { Text("Track lyrics (.LRC supported)") })
         } else {
+            var showQueueAdd by remember { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Up next", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showQueueAdd = true }) { Icon(Icons.Default.Add, null); Text("Add") }
                 Text(queue.size.toString() + " tracks", color = palette.muted, fontSize = 12.sp)
+            }
+            if (showQueueAdd) {
+                val candidates = availableTracks.filter { candidate -> queue.none { it.id == candidate.id } }
+                AlertDialog(
+                    onDismissRequest = { showQueueAdd = false },
+                    title = { Text("Add to queue") },
+                    text = {
+                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                            items(candidates, key = { it.id }) { candidate ->
+                                TextButton(onClick = {
+                                    onQueueEdit(QueueEditor.append(queue, listOf(candidate)), currentIndex, positionMs)
+                                    showQueueAdd = false
+                                }) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Text(candidate.title, color = palette.text, maxLines = 1)
+                                        Text(candidate.artist, color = palette.muted, fontSize = 11.sp, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showQueueAdd = false }) { Text("Close") } }
+                )
             }
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 150.dp)) {
                 items(queue.size) { index ->
@@ -1282,6 +1455,23 @@ private fun NowPlayingScreen(
                             Text(item.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
                         }
                         if (index == currentIndex) Icon(Icons.Default.Equalizer, null, tint = accent)
+                        IconButton(onClick = {
+                            if (index > 0) {
+                                val moved = QueueEditor.move(queue, index, index - 1)
+                                val nextIndex = when (currentIndex) { index -> index - 1; index - 1 -> index; else -> currentIndex }
+                                onQueueEdit(moved, nextIndex, positionMs)
+                            }
+                        }, enabled = index > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = palette.muted) }
+                        IconButton(onClick = {
+                            val updated = QueueEditor.remove(queue, index)
+                            val nextIndex = when {
+                                updated.isEmpty() -> 0
+                                index < currentIndex -> currentIndex - 1
+                                index == currentIndex -> index.coerceAtMost(updated.lastIndex)
+                                else -> currentIndex
+                            }
+                            onQueueEdit(updated, nextIndex, if (index == currentIndex) 0L else positionMs)
+                        }) { Icon(Icons.Default.Close, "Remove from queue", tint = palette.muted) }
                     }
                 }
             }

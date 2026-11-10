@@ -19,6 +19,8 @@ class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
+        if (section == "Quran") return@withContext searchAlFurqanQuran(query)
+        if (section in AUDIO_SOURCE_CATEGORIES) return@withContext sourceDirectory(query, section)
         if (section == "General Audiobooks") {
             val providers = coroutineScope {
                 listOf(
@@ -40,6 +42,86 @@ class AudioLibraryRepository {
 
     suspend fun featured(section: String): List<Track> = search("", section)
 
+    private data class AudioSource(val name: String, val description: String, val url: String, val categories: Set<String>, val language: String = "Urdu / English")
+
+    private fun sourceDirectory(query: String, section: String): List<Track> {
+        val sources = listOf(
+            AudioSource("Shia Audios", "Urdu and English audiobooks, Quran translation and Tafseer", "https://www.shiaaudios.com/audios", setOf("Shia Audiobooks", "Quran", "Tafseer")),
+            AudioSource("Wilayat Waves", "Urdu Shia audiobooks with book and episode listings", "https://wilayatwaves.com/audiobook/", setOf("Shia Audiobooks", "Tafseer")),
+            AudioSource("Shia Readers · SoundCloud", "Community audiobooks, lectures and religious audio", "https://soundcloud.com/shiareaders", setOf("Shia Audiobooks", "Majalis", "Shia Podcasts")),
+            AudioSource("Shia Readers · YouTube", "Audiobooks, lectures and religious audio series", "https://www.youtube.com/@ShiaReaders", setOf("Shia Audiobooks", "Majalis")),
+            AudioSource("Internet Archive · Urdu Shia audio", "Searchable archive; item rights and playback vary", "https://archive.org/search?query=urdu+shia+audio", setOf("Shia Audiobooks", "Marsiya")),
+            AudioSource("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/", setOf("Shia Audiobooks", "Quran", "Tafseer", "Duas & Ziyarat")),
+            AudioSource("Rawda", "Shia latmiyat, nohay, marsiya, Quran, duas and lectures", "https://rawda.app/", setOf("Nohay", "Marsiya", "Quran", "Duas & Ziyarat", "Majalis", "Manqabat")),
+            AudioSource("Azadari Media", "Nohay, manqabat, marsiya and majlis audio", "https://azadari.media/", setOf("Nohay", "Marsiya", "Majalis", "Manqabat")),
+            AudioSource("Nauha Diary · Azadari Media", "Nauha and marsiya lyrics and reciter discovery", "https://nauhadiary.com/azadari-media", setOf("Nohay", "Marsiya")),
+            AudioSource("ShiaViews", "Shia Quran, majalis, lectures and Islamic lessons", "https://www.shiaviews.com/", setOf("Quran", "Tafseer", "Majalis")),
+            AudioSource("ShiaRise Media", "Podcasts, Quran recitations, duas and latmiyat", "https://shiarise.org/media-explore/", setOf("Nohay", "Quran", "Duas & Ziyarat", "Shia Podcasts")),
+            AudioSource("Alwasi TV", "Shia lectures, Quranic commentary and podcasts", "https://alwasi.tv/", setOf("Quran", "Tafseer", "Majalis", "Shia Podcasts")),
+            AudioSource("Al Furqan Quran Audio", "Quran recitations and reciter catalogue; API terms apply", "https://alfurqan.online/docs", setOf("Quran"), "Arabic"),
+            AudioSource("Quran Foundation Developer API", "Official Quran audio and recitation metadata API; credentials and terms apply", "https://api-docs.quran.foundation/docs/api-reference/", setOf("Quran"), "Arabic"),
+            AudioSource("MP3 Quran", "Quran reciters and surah audio catalogue", "https://mp3quran.net/", setOf("Quran"), "Arabic"),
+            AudioSource("Shia Multimedia", "Quran audio, translations and Tafseer resources", "https://shiamultimedia.com/tafseer.html", setOf("Quran", "Tafseer"), "Arabic / Urdu"),
+            AudioSource("Al Basheer", "Shia community khutbah, lectures, Quran and podcast media", "https://albasheeraz.org/", setOf("Majalis", "Shia Podcasts", "Quran"))
+        )
+        return sources.filter { source ->
+            (section == "All Audio Sources" || section in source.categories) &&
+                (query.isBlank() || (source.name + " " + source.description).contains(query, ignoreCase = true))
+        }.distinctBy { it.url }.map { source ->
+            Track(id = "source:" + source.name.lowercase().replace(Regex("[^a-z0-9]+"), "-"), title = source.name, artist = source.description, contentType = "External audio source", language = source.language, tradition = "Shia Library", externalUrl = source.url, isDownloadable = false)
+        }
+    }
+
+    companion object {
+        // Only this tab is intentionally a provider directory. Quran has a live catalogue adapter below.
+        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Audiobooks", "Nohay", "Marsiya", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts")
+        private const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
+        private const val AL_FURQAN_BASE = "https://alfurqan.online/api/v1"
+    }
+
+    /**
+     * Live Quran catalogue backed by Al Furqan's public API.
+     * Each result is an individual ayah stream, not a falsely labelled full-surah file.
+     */
+    private suspend fun searchAlFurqanQuran(query: String): List<Track> {
+        val surahRoot = getJson("$AL_FURQAN_BASE/surahs") as? JSONObject ?: return emptyList()
+        val surahs = surahRoot.optJSONArray("surahs") ?: JSONArray()
+        val reciterRoot = getJson("$AL_FURQAN_BASE/reciters") as? JSONObject ?: JSONObject()
+        val reciters = reciterRoot.optJSONArray("reciters") ?: JSONArray()
+        val normalized = query.trim().lowercase()
+        val availableReciters = (0 until reciters.length()).mapNotNull { reciters.optJSONObject(it) }
+        val selectedReciter = availableReciters.firstOrNull { reciter ->
+            normalized.isNotBlank() && (reciter.optString("name").contains(normalized, true) ||
+                reciter.optString("arabicName").contains(normalized, true) || reciter.optString("id").contains(normalized, true))
+        } ?: availableReciters.firstOrNull { it.optString("id") == "husary" } ?: availableReciters.firstOrNull()
+        val reciterId = selectedReciter?.optString("id")?.takeIf { it.isNotBlank() } ?: "husary"
+        val reciterName = selectedReciter?.optString("name")?.takeIf { it.isNotBlank() } ?: "Mahmoud Khalil Al-Husary"
+        val matchingSurahs = (0 until surahs.length()).mapNotNull { surahs.optJSONObject(it) }.filter { surah ->
+            normalized.isBlank() || surah.optString("transliteration").contains(normalized, true) ||
+                surah.optString("translation").contains(normalized, true) || surah.optString("name").contains(normalized, true) ||
+                reciterName.contains(normalized, true) || reciterId.contains(normalized, true)
+        }
+        return buildList {
+            for (surah in matchingSurahs) {
+                val number = surah.optInt("number")
+                val ayahCount = surah.optInt("ayahCount")
+                val startAyah = surah.optInt("startAyah", 0)
+                if (number !in 1..114 || ayahCount <= 0 || startAyah <= 0) continue
+                for (ayah in 1..ayahCount) {
+                    val globalAyah = startAyah + ayah - 1
+                    add(Track(
+                        id = "alfurqan:$reciterId:$number:$ayah",
+                        title = "${surah.optString("transliteration", "Surah $number")} · Ayah $ayah",
+                        artist = "$reciterName · ${surah.optString("translation")}",
+                        streamUrl = "$AL_FURQAN_BASE/audio/$reciterId/$globalAyah",
+                        isDownloadable = false, language = "Arabic",
+                        contentType = "Quran recitation · individual ayah", tradition = "Quran"
+                    ))
+                    if (size >= 250) return@buildList
+                }
+            }
+        }
+    }
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
         val types = listOf("audios", "books")
         val itemLists = coroutineScope {
@@ -269,7 +351,5 @@ class AudioLibraryRepository {
         }
     }
 
-    private companion object {
-        const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
-    }
+
 }

@@ -36,6 +36,8 @@ class SettingsStore(context: Context) {
         if (value in ACCENT_OPTIONS) prefs.edit().putString("accent", value).apply()
     }
     fun isDynamicThemeEnabled(): Boolean = prefs.getBoolean("dynamic_theme", false)
+    fun getAudioTheme(): String = prefs.getString("audio_theme", "artwork") ?: "artwork"
+    fun setAudioTheme(value: String) { if (value in AUDIO_THEMES) prefs.edit().putString("audio_theme", value).apply() }
     fun setDynamicThemeEnabled(enabled: Boolean) {
         prefs.edit().putBoolean("dynamic_theme", enabled).apply()
     }
@@ -50,6 +52,7 @@ class SettingsStore(context: Context) {
             "green", "lime", "yellow", "orange", "red", "rose", "pink"
         )
         val APPEARANCE_MODES = setOf("light", "dark", "amoled")
+        val AUDIO_THEMES = setOf("artwork", "aurora", "neon", "ocean", "sunset", "forest", "minimal")
     }
 }
 
@@ -71,6 +74,8 @@ private val appearanceOptions = listOf(
 fun SettingsScreen(
     accentName: String,
     dynamicTheme: Boolean,
+    audioTheme: String,
+    onAudioThemeChange: (String) -> Unit,
     onAccentChange: (String) -> Unit,
     onDynamicThemeChange: (Boolean) -> Unit,
     appearanceMode: String,
@@ -90,7 +95,7 @@ fun SettingsScreen(
     ) {
         Spacer(Modifier.height(8.dp))
         Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Black, color = palette.text)
-        Text("MAKE JD MUSAX YOURS", color = palette.muted, fontSize = 10.sp, letterSpacing = 2.sp)
+        Text("MAKE SHIAUDIO YOURS", color = palette.muted, fontSize = 10.sp, letterSpacing = 2.sp)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -146,6 +151,24 @@ fun SettingsScreen(
                     color = palette.muted,
                     fontSize = 12.sp
                 )
+            }
+        }
+
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text("Audio Themes", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text("Choose the animated atmosphere shown behind the Now Playing screen.", color = palette.muted, fontSize = 12.sp)
+                val themes = listOf("artwork" to "Artwork", "aurora" to "Aurora", "neon" to "Neon", "ocean" to "Ocean", "sunset" to "Sunset", "forest" to "Forest", "minimal" to "Minimal")
+                themes.chunked(2).forEach { group ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        group.forEach { (key, label) -> FilterChip(selected = audioTheme == key, onClick = { onAudioThemeChange(key) }, label = { Text(label) }) }
+                    }
+                }
+                Text("Selection is saved on this device. Artwork mode follows the current album cover accent.", color = palette.muted, fontSize = 11.sp)
             }
         }
 
@@ -226,6 +249,28 @@ fun SettingsScreen(
             }
         }
 
-        Text("JD musax • Native Android edition", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Privacy & sources", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "SHIAudio has no account requirement. Your saved library, playlists, bookmarks, listening history and playback progress are stored locally on this device.",
+                    color = palette.muted, fontSize = 12.sp
+                )
+                Text(
+                    "When you open an external provider, that website or app applies its own privacy policy and content rules. SHIAudio does not bypass download restrictions or claim external-only sources as in-app playback.",
+                    color = palette.muted, fontSize = 12.sp
+                )
+                Text(
+                    "Audio visualizer access is optional and is requested only when you enable the visualizer.",
+                    color = palette.muted, fontSize = 12.sp
+                )
+            }
+        }
+
+        Text("SHIAudio • Native Android edition", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
     }
 }

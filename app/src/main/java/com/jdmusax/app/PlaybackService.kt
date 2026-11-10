@@ -77,9 +77,11 @@ class PlaybackService : MediaSessionService() {
                     val savedParsedUri = Uri.parse(savedUri)
                     val isLocal = savedParsedUri.scheme == "content" || savedParsedUri.scheme == "file"
 
-                    // Preserve app-owned provider URLs and local document URIs.
-                    // Legacy Audius queue entries are intentionally skipped during migration.
-                    if (!isLocal && !mediaId.startsWith("islamhouse:") && !mediaId.startsWith("librivox:")) {
+                    // Restore only local document URIs or secure HTTPS streams.
+                    // This includes Quran ayahs, licensed archive audio, RSS enclosures,
+                    // and the currently supported provider adapters. External source links
+                    // never enter the player queue because they are opened by ACTION_VIEW.
+                    if (!isLocal && savedParsedUri.scheme != "https") {
                         return@mapNotNull null
                     }
                     val playableUri = savedUri
