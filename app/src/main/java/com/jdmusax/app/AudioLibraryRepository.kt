@@ -176,13 +176,13 @@ class AudioLibraryRepository {
             val title = item.optString("collectionName").lowercase()
             val description = item.optString("artistName").lowercase() + " " + item.optString("primaryGenreName").lowercase()
             if (loyalBooksOnly) feed.contains("loyalbooks.com")
-            else !feed.contains("loyalbooks.com") && (title.contains("audiobook") || title.contains("audio book") || title.contains("story") || title.contains("audio drama") || description.contains("audiobook"))
+            else !feed.contains("loyalbooks.com") && (title.contains("audiobook") || title.contains("audio book") || title.contains("story") || title.contains("audio drama") || title.contains("stories") || title.contains("bedtime") || title.contains("children") || title.contains("fiction") || title.contains("novel") || description.contains("audiobook"))
         }.take(10)
         return coroutineScope {
             found.map { feed -> async {
                 val feedUrl = feed.optString("feedUrl")
                 val xml = runCatching { getText(feedUrl) }.getOrNull() ?: return@async emptyList<Track>()
-                parsePodcastFeed(xml, feed).take(30)
+                runCatching { parsePodcastFeed(xml, feed).take(30) }.getOrDefault(emptyList())
             } }.awaitAll().flatten()
         }
     }
@@ -196,23 +196,24 @@ class AudioLibraryRepository {
         var title = ""
         var author = feed.optString("artistName", "Podcast publisher")
         var enclosure = ""
+        var enclosureType = ""
         var artwork = feed.optString("artworkUrl600").ifBlank { feed.optString("artworkUrl100") }
         var description = ""
         var language = ""
         while (event != XmlPullParser.END_DOCUMENT && items.size < 30) {
             when (event) {
                 XmlPullParser.START_TAG -> when (parser.name.lowercase()) {
-                    "item" -> { inItem = true; title = ""; enclosure = ""; description = "" }
+                    "item" -> { inItem = true; title = ""; enclosure = ""; enclosureType = ""; description = "" }
                     "title" -> if (inItem) title = parser.nextText().trim()
                     "author", "itunes:author" -> if (inItem) author = parser.nextText().trim()
                     "description", "summary", "itunes:summary" -> if (inItem) description = parser.nextText().take(300).trim()
-                    "enclosure" -> if (inItem) enclosure = parser.getAttributeValue(null, "url").orEmpty()
+                    "enclosure" -> if (inItem) { enclosure = parser.getAttributeValue(null, "url").orEmpty(); enclosureType = parser.getAttributeValue(null, "type").orEmpty().lowercase() }
                     "image" -> parser.getAttributeValue(null, "href")?.let { artwork = it }
                     "language" -> if (!inItem) language = parser.nextText().trim()
                 }
                 XmlPullParser.END_TAG -> if (parser.name.equals("item", true)) {
                     if (inItem && title.isNotBlank() && enclosure.startsWith("https://") &&
-                        (enclosure.contains(".mp3", true) || enclosure.contains(".m4a", true) || enclosure.contains(".m4b", true) || enclosure.contains(".aac", true))) {
+                        ((enclosure.contains(".mp3", true) || enclosure.contains(".m4a", true) || enclosure.contains(".m4b", true) || enclosure.contains(".aac", true)) || enclosureType.startsWith("audio/"))) {
                         val source = if (feed.optString("feedUrl").contains("loyalbooks.com", true)) "Loyal Books" else "Podcast audiobook"
                         items.add(Track(id = "rss:" + feed.optString("feedUrl") + ":" + enclosure, title = title, artist = author + " · " + source, artwork = artwork.takeIf { it.startsWith("https://") }, streamUrl = enclosure, isDownloadable = false, language = language.ifBlank { "Unspecified" }, contentType = if (source == "Loyal Books") "Audiobook" else "Audiobook / serialized audio", tradition = "General"))
                     }
