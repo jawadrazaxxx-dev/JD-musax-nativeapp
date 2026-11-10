@@ -222,7 +222,8 @@ class MainActivity : ComponentActivity() {
                             .setDescription("Downloading audio for offline listening")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
                             .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.$extension")
-                        (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                        val downloadId = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
+                        OfflineAudioStore(applicationContext).remember(track, downloadId)
                     }
                 }
             )
@@ -377,6 +378,7 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     EXPLORE("Discover", Icons.Default.Explore),
     LIBRARY("Library", Icons.Default.MenuBook),
     SETTINGS("Settings", Icons.Default.Settings),
+    INSIGHTS("Insights", Icons.Default.Insights),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
 
@@ -459,6 +461,12 @@ private fun JDMusaxApp(
     val playlistStore = remember { PlaylistStore(appContext) }
     var playlists by remember { mutableStateOf(playlistStore.load()) }
     val progressStore = remember { ListeningProgressStore(appContext) }
+    val analyticsStore = remember { ListeningAnalyticsStore(appContext) }
+    val challengeStore = remember { ListeningChallengeStore(appContext) }
+    val offlineStore = remember { OfflineAudioStore(appContext) }
+    var listeningSnapshot by remember { mutableStateOf(analyticsStore.snapshot()) }
+    var challenge by remember { mutableStateOf(challengeStore.load()) }
+    var offlineTracks by remember { mutableStateOf(offlineStore.completed().map { item -> Track(id = "download:${item.downloadId}", title = item.title, artist = "Downloaded audio", localUri = item.uri.toString()) }) }
     var savedProgressMs by remember(nowPlaying?.id) { mutableLongStateOf(nowPlaying?.let { progressStore.load(it.id) } ?: 0L) }
 
     LaunchedEffect(sessionTracks, sessionIndex) {
@@ -511,7 +519,11 @@ private fun JDMusaxApp(
         while (isPlaying && nowPlaying != null) {
             delay(500L)
             refreshPlaybackPosition()
-            nowPlaying?.let { progressStore.save(it.id, positionMs) }
+            nowPlaying?.let { track ->
+                progressStore.save(track.id, positionMs)
+                analyticsStore.record(track, 500L)
+                listeningSnapshot = analyticsStore.snapshot()
+            }
         }
     }
 
@@ -618,7 +630,7 @@ private fun JDMusaxApp(
             containerColor = palette.background,
             bottomBar = {
                 NavigationBar(containerColor = palette.surface) {
-                    AppTab.values().forEach { t ->
+                    AppTab.values().filter { it != AppTab.PLAYER }.forEach { t ->
                         NavigationBarItem(
                             selected = tab == t,
                             onClick = { tab = t },
@@ -696,6 +708,17 @@ private fun JDMusaxApp(
                         onPlay = { play(it, trending) },
                         onToggleSave = { toggleSave(it) },
                         onDownload = onDownload
+                    )
+                    AppTab.INSIGHTS -> ListeningInsightsScreen(
+                        snapshot = listeningSnapshot,
+                        challenge = challenge,
+                        todayMs = listeningSnapshot.dailyTotals[ java.time.LocalDate.now() ] ?: 0L,
+                        offlineTracks = offlineTracks,
+                        accent = accent,
+                        onGoalChange = { minutes -> challenge = challenge.copy(goalMinutes = minutes); challengeStore.save(challenge) },
+                        onChallengeToggle = { enabled -> challenge = challenge.copy(enabled = enabled); challengeStore.save(challenge) },
+                        onPlayOffline = { track -> play(track, listOf(track)) },
+                        onRemoveOffline = { id -> if (id > 0L) { offlineStore.remove(id); offlineTracks = offlineStore.completed().map { item -> Track(id = "download:${item.downloadId}", title = item.title, artist = "Downloaded audio", localUri = item.uri.toString()) } } }
                     )
                     AppTab.LIBRARY -> LibraryScreen(
                         tracks = saved.toList(),
