@@ -73,6 +73,7 @@ class AudioLibraryRepository {
 
     companion object {
         private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Sources", "Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Islamic Podcasts")
+        private const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
     }
 
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
@@ -304,7 +305,5 @@ class AudioLibraryRepository {
         }
     }
 
-    private companion object {
-        const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
-    }
+
 }
