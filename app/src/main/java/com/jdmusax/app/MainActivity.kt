@@ -11,6 +11,7 @@ import android.graphics.BitmapFactory
 import androidx.palette.graphics.Palette
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -18,6 +19,8 @@ import androidx.compose.foundation.background
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -528,6 +531,8 @@ private fun JDMusaxApp(
         if (tab == AppTab.EXPLORE && !trendingLoaded && !trendingLoading) loadTrending()
     }
 
+    BackHandler(enabled = showNowPlaying) { showNowPlaying = false }
+
     MaterialTheme(
         colorScheme = if (appearanceMode == "light") {
             lightColorScheme(primary = accent, onPrimary = Color.White, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
@@ -539,7 +544,7 @@ private fun JDMusaxApp(
         Scaffold(
             containerColor = palette.background,
             bottomBar = {
-                Column {
+                if (!showNowPlaying) Column {
                     MiniPlayer(
                         nowPlaying, isPlaying, accent,
                         onPrevious = onPrevious,
@@ -1021,7 +1026,7 @@ private fun NowPlayingScreen(
     shuffleEnabled: Boolean, repeatMode: Int, onShuffleToggle: () -> Unit, onRepeatCycle: () -> Unit,
     onLyricsChange: (String) -> Unit
 ) {
-    Column(Modifier.fillMaxSize().padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Default.KeyboardArrowDown, "Close player", tint = palette.text) }
             Spacer(Modifier.weight(1f))
