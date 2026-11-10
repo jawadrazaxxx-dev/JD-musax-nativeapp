@@ -33,14 +33,14 @@ The catalogue layer supports several kinds of audio sources:
 - **Rawda** — nohay, latmiyat, marsiya, Quran, duas, and lectures.
 - **Azadari Media** — nohay, marsiya, manqabat, and majlis audio.
 - **Shia Multimedia** — Quran audio and Tafseer resources.
-- **Quran Foundation, Al Furqan, and MP3 Quran** — Quran recitation discovery and metadata.
+- **Al Furqan Quran API** — live Quran catalogue with 114 surahs, individual ayah streams, and reciter selection. Each result is one ayah, not a falsely labelled complete surah.
 - **Shia Readers, ShiaViews, ShiaRise, Alwasi TV, Kashana-e-Baseerat, and Al Basheer** — community audio, lectures, and educational resources.
 - **IslamHouse** — Islamic audio and book/audio entries, with language and category filtering.
 - **LibriVox** — public-domain audiobook chapters.
 - **Internet Archive** — audio-book and open-audio catalogue entries that pass the app's public-domain or supported Creative Commons licence checks.
 - **Podcast audiobook feeds** — podcast discovery through the public podcast directory, including Loyal Books feeds; playback uses the publisher's RSS enclosure URL.
 
-Available results depend on each provider's API, catalogue, network availability, and stream URLs. A provider directory entry is a link to the original source, not a claim that its catalogue is playable in-app. External-only sources open the provider. The app does not bypass login, DRM, copyright, or download restrictions, and does not host these catalogues or audio files.
+The Quran tab uses Al Furqan's documented public API (`https://alfurqan.online/api/v1`): it loads surah and reciter metadata, then streams individual ayahs. Al-Husary is the default reciter when available; entering a reciter name or ID filters to that reciter. The API documents 44 reciters, 114 surahs, and individual ayah audio endpoints. Other provider results depend on each provider's API, catalogue, network availability, and stream URLs. A provider directory entry is a link to the original source, not a claim that its catalogue is playable in-app. External-only sources open the provider. The app does not bypass login, DRM, copyright, or download restrictions, and does not host these catalogues or audio files.
 
 ### Personal library
 
@@ -130,7 +130,7 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/jawadrazaxxx-dev/SHIAudio-nativeapp.git
+   git clone https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp.git
    cd SHIAudio-nativeapp
    ```
 
@@ -153,7 +153,7 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 
 The repository includes **Android CI** and **Build SHIAudio APK** workflows.
 
-1. Open the repository's [Actions page](https://github.com/jawadrazaxxx-dev/SHIAudio-nativeapp/actions).
+1. Open the repository's [Actions page](https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp/actions).
 2. Open a completed run for the relevant workflow.
 3. Confirm that the build job succeeded.
 4. Download the `SHIAudio-debug-apk` artifact and extract the APK.
