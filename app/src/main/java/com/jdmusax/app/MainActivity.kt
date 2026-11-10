@@ -553,7 +553,7 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Shia Sources") }
+    var selectedCategory by remember { mutableStateOf("Shia Audiobooks") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -811,8 +811,8 @@ private fun JDMusaxApp(
 }
 
 private val musicCategories = listOf(
-    "Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer",
-    "Majalis", "Duas & Ziyarat", "Manqabat", "Islamic Podcasts", "Shia Sources"
+    "Shia Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer",
+    "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts"
 )
 
 @Composable
@@ -858,7 +858,7 @@ private fun HomeScreen(
     val palette = LocalAppPalette.current
     val dailyMix = (mostPlayedTracks.take(8) + recentTracks).distinctBy { it.id }.take(12)
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("SHIAudio", "SHIA AUDIO • BOOKS • QURAN • AZADARI")
+        ScreenHeader("SHIAudio", "SHIA AUDIO • QURAN • AZADARI")
         if (dailyMix.isNotEmpty()) {
             HomeListeningHighlights(
                 recentTrack = recentTracks.firstOrNull(),
@@ -869,7 +869,6 @@ private fun HomeScreen(
                 onContinue = { recentTracks.firstOrNull()?.let(onContinue) }
             )
         }
-        CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
