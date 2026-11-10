@@ -45,22 +45,23 @@ class AudioLibraryRepository {
 
     private fun sourceDirectory(query: String, section: String): List<Track> {
         val sources = listOf(
-            AudioSource("Shia Audios", "Urdu and English Shia audiobook catalogue", "https://www.shiaaudios.com/audios", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures")),
-            AudioSource("Wilayat Waves", "AI-narrated Urdu Shia audiobooks and episodes", "https://wilayatwaves.com/", setOf("Shia Sources", "Audiobooks")),
-            AudioSource("Shia Readers · SoundCloud", "Community audiobook recordings and book excerpts", "https://soundcloud.com/shiareaders", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures", "Islamic Podcasts")),
-            AudioSource("Shia Readers · YouTube", "Audiobooks, lectures and religious audio series", "https://www.youtube.com/@ShiaReaders", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures")),
-            AudioSource("Internet Archive · Urdu Shia audio", "Searchable archive; item rights and playback vary", "https://archive.org/search?query=urdu+shia+audio", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures")),
-            AudioSource("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/", setOf("Shia Sources", "Audiobooks", "Quran & Recitation", "Majlis & Lectures")),
-            AudioSource("Rawda", "Shia latmiyat, nohay, Quran, duas, anasheed and lectures", "https://rawda.app/", setOf("Shia Sources", "Nohay & Marsiya", "Quran & Recitation", "Majlis & Lectures")),
-            AudioSource("Azadari Media", "Nohay, manqabat, marsiya and full majlis audio with lyrics", "https://azadari.media/", setOf("Shia Sources", "Nohay & Marsiya", "Majlis & Lectures")),
-            AudioSource("Nauha Diary · Azadari Media", "Nauha lyrics and reciter/album discovery", "https://nauhadiary.com/azadari-media", setOf("Shia Sources", "Nohay & Marsiya")),
-            AudioSource("ShiaViews", "Shia Quran, majalis, lectures and Islamic lessons", "https://www.shiaviews.com/", setOf("Shia Sources", "Quran & Recitation", "Majlis & Lectures")),
-            AudioSource("ShiaRise Media", "Podcasts, Quran recitations, duas and latmiyat", "https://shiarise.org/media-explore/", setOf("Shia Sources", "Nohay & Marsiya", "Quran & Recitation", "Islamic Podcasts")),
-            AudioSource("Alwasi TV", "Shia lectures, Quranic commentary and podcasts", "https://alwasi.tv/", setOf("Shia Sources", "Quran & Recitation", "Majlis & Lectures", "Islamic Podcasts")),
-            AudioSource("Al Furqan Quran Audio API", "Quran recitations and reciter catalogue; API terms apply", "https://alfurqan.online/docs", setOf("Quran & Recitation"), "Arabic"),
-            AudioSource("Quran Foundation Developer API", "Official Quran audio and recitation metadata API; credentials and terms apply", "https://api-docs.quran.foundation/docs/api-reference/", setOf("Quran & Recitation"), "Arabic"),
-            AudioSource("MP3 Quran", "Quran reciters and surah audio catalogue", "https://mp3quran.net/", setOf("Quran & Recitation"), "Arabic"),
-            AudioSource("Al Basheer", "Shia community khutbah, lectures, Quran and podcast media", "https://albasheeraz.org/", setOf("Majlis & Lectures", "Islamic Podcasts", "Quran & Recitation"))
+            AudioSource("Shia Audios", "Urdu and English audiobooks, Quran translation and Tafseer", "https://www.shiaaudios.com/audios", setOf("Shia Sources", "Audiobooks", "Quran", "Tafseer")),
+            AudioSource("Wilayat Waves", "Urdu Shia audiobooks with book and episode listings", "https://wilayatwaves.com/audiobook/", setOf("Shia Sources", "Audiobooks", "Tafseer")),
+            AudioSource("Shia Readers · SoundCloud", "Community audiobooks, lectures and religious audio", "https://soundcloud.com/shiareaders", setOf("Shia Sources", "Audiobooks", "Majalis", "Islamic Podcasts")),
+            AudioSource("Shia Readers · YouTube", "Audiobooks, lectures and religious audio series", "https://www.youtube.com/@ShiaReaders", setOf("Shia Sources", "Audiobooks", "Majalis")),
+            AudioSource("Internet Archive · Urdu Shia audio", "Searchable archive; item rights and playback vary", "https://archive.org/search?query=urdu+shia+audio", setOf("Shia Sources", "Audiobooks", "Marsiya")),
+            AudioSource("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/", setOf("Shia Sources", "Audiobooks", "Quran", "Tafseer", "Duas & Ziyarat")),
+            AudioSource("Rawda", "Shia latmiyat, nohay, marsiya, Quran, duas and lectures", "https://rawda.app/", setOf("Shia Sources", "Nohay", "Marsiya", "Quran", "Duas & Ziyarat", "Majalis", "Manqabat")),
+            AudioSource("Azadari Media", "Nohay, manqabat, marsiya and majlis audio", "https://azadari.media/", setOf("Shia Sources", "Nohay", "Marsiya", "Majalis", "Manqabat")),
+            AudioSource("Nauha Diary · Azadari Media", "Nauha and marsiya lyrics and reciter discovery", "https://nauhadiary.com/azadari-media", setOf("Shia Sources", "Nohay", "Marsiya")),
+            AudioSource("ShiaViews", "Shia Quran, majalis, lectures and Islamic lessons", "https://www.shiaviews.com/", setOf("Shia Sources", "Quran", "Tafseer", "Majalis")),
+            AudioSource("ShiaRise Media", "Podcasts, Quran recitations, duas and latmiyat", "https://shiarise.org/media-explore/", setOf("Shia Sources", "Nohay", "Quran", "Duas & Ziyarat", "Islamic Podcasts")),
+            AudioSource("Alwasi TV", "Shia lectures, Quranic commentary and podcasts", "https://alwasi.tv/", setOf("Shia Sources", "Quran", "Tafseer", "Majalis", "Islamic Podcasts")),
+            AudioSource("Al Furqan Quran Audio", "Quran recitations and reciter catalogue; API terms apply", "https://alfurqan.online/docs", setOf("Quran"), "Arabic"),
+            AudioSource("Quran Foundation Developer API", "Official Quran audio and recitation metadata API; credentials and terms apply", "https://api-docs.quran.foundation/docs/api-reference/", setOf("Quran"), "Arabic"),
+            AudioSource("MP3 Quran", "Quran reciters and surah audio catalogue", "https://mp3quran.net/", setOf("Quran"), "Arabic"),
+            AudioSource("Shia Multimedia", "Quran audio, translations and Tafseer resources", "https://shiamultimedia.com/tafseer.html", setOf("Quran", "Tafseer"), "Arabic / Urdu"),
+            AudioSource("Al Basheer", "Shia community khutbah, lectures, Quran and podcast media", "https://albasheeraz.org/", setOf("Majalis", "Islamic Podcasts", "Quran"))
         )
         return sources.filter { source ->
             (section == "All Audio Sources" || section in source.categories) &&
@@ -71,7 +72,7 @@ class AudioLibraryRepository {
     }
 
     companion object {
-        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Sources", "All Audio Sources", "Audiobooks", "Nohay & Marsiya", "Quran & Recitation", "Majlis & Lectures", "Islamic Podcasts")
+        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Sources", "Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Islamic Podcasts")
     }
 
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
