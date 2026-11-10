@@ -26,8 +26,9 @@ class AudioLibraryRepository {
 
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
         val types = listOf("audios", "books")
-        val itemLists = types.map { type ->
-            async {
+        val itemLists = coroutineScope {
+            types.map { type ->
+                async {
                 val root = getJson("$ISLAMHOUSE_BASE/main/$type/$language/$language/1/40/json")
                 val data = when (root) {
                     is JSONArray -> root
@@ -39,11 +40,12 @@ class AudioLibraryRepository {
                         val text = (item.optString("title") + " " + item.optString("description")).lowercase()
                         query.isBlank() || query.lowercase() in text
                     }.map { it to type }
-            }
-        }.awaitAll().flatten()
+                }
+            }.awaitAll().flatten()
+        }
 
         return coroutineScope {
-            itemLists.take(30).map { (item, type) -> async {
+            itemLists.take(12).map { (item, type) -> async {
                 val id = item.optInt("id")
                 val detail = runCatching { getJson("$ISLAMHOUSE_BASE/main/get-item/$id/$language/json") as? JSONObject }.getOrNull()
                 val attachments = detail?.optJSONArray("attachments") ?: JSONArray()
