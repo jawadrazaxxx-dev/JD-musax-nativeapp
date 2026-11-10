@@ -95,7 +95,7 @@ fun SettingsScreen(
     ) {
         Spacer(Modifier.height(8.dp))
         Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Black, color = palette.text)
-        Text("MAKE JD MUSAX YOURS", color = palette.muted, fontSize = 10.sp, letterSpacing = 2.sp)
+        Text("MAKE SHIAUDIO YOURS", color = palette.muted, fontSize = 10.sp, letterSpacing = 2.sp)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
@@ -249,6 +249,28 @@ fun SettingsScreen(
             }
         }
 
-        Text("JD musax • Native Android edition", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(20.dp),
+            colors = CardDefaults.cardColors(containerColor = palette.surface)
+        ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Privacy & sources", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "SHIAudio has no account requirement. Your saved library, playlists, bookmarks, listening history and playback progress are stored locally on this device.",
+                    color = palette.muted, fontSize = 12.sp
+                )
+                Text(
+                    "When you open an external provider, that website or app applies its own privacy policy and content rules. SHIAudio does not bypass download restrictions or claim external-only sources as in-app playback.",
+                    color = palette.muted, fontSize = 12.sp
+                )
+                Text(
+                    "Audio visualizer access is optional and is requested only when you enable the visualizer.",
+                    color = palette.muted, fontSize = 12.sp
+                )
+            }
+        }
+
+        Text("SHIAudio • Native Android edition", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(top = 4.dp))
     }
 }
