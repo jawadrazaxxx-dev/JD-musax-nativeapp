@@ -17,7 +17,15 @@ class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
-        if (section == "General Audiobooks") return@withContext searchLibriVox(query.trim())
+        if (section == "General Audiobooks") {
+            val providers = coroutineScope {
+                listOf(
+                    async { searchLibriVox(query.trim()) },
+                    async { searchInternetArchive(query.trim()) }
+                ).awaitAll()
+            }
+            return@withContext providers.flatten().distinctBy { it.id }.take(100)
+        }
         val languageOnly = mapOf("Urdu Audio" to "ur", "English Audio" to "en", "Arabic Audio" to "ar")[section]
         val tradition = if (languageOnly != null) "All Islamic" else section
         val languages = languageOnly?.let(::listOf) ?: listOf("ur", "en", "ar")
@@ -103,6 +111,44 @@ class AudioLibraryRepository {
         }
     }
 
+    /**
+     * Searches Internet Archive audio. Only items with an explicit
+     * public-domain or Creative Commons reuse licence are surfaced.
+     */
+    private suspend fun searchInternetArchive(query: String): List<Track> {
+        val baseQuery = "mediatype:audio AND (collection:audio_bookspoetry OR collection:opensource_audio)"
+        val fullQuery = if (query.isBlank()) baseQuery else baseQuery + " AND (title:\"" + query + "\" OR description:\"" + query + "\" OR creator:\"" + query + "\" OR subject:\"" + query + "\")"
+        val encoded = URLEncoder.encode(fullQuery, "UTF-8")
+        val searchUrl = "https://archive.org/advancedsearch.php?q=" + encoded + "&fl[]=identifier&fl[]=title&fl[]=creator&fl[]=description&fl[]=language&fl[]=subject&fl[]=licenseurl&fl[]=rights&rows=30&page=1&output=json"
+        val root = getJson(searchUrl) as? JSONObject ?: return emptyList()
+        val docs = root.optJSONObject("response")?.optJSONArray("docs") ?: JSONArray()
+        return coroutineScope {
+            (0 until docs.length()).mapNotNull { docs.optJSONObject(it) }.take(20).map { item ->
+                async {
+                    val identifier = item.optString("identifier")
+                    if (identifier.isBlank()) return@async null
+                    val metadataRoot = runCatching { getJson("https://archive.org/metadata/" + identifier) as? JSONObject }.getOrNull() ?: return@async null
+                    val metadata = metadataRoot.optJSONObject("metadata") ?: JSONObject()
+                    val license = (item.optString("licenseurl") + " " + item.optString("rights") + " " + metadata.optString("licenseurl") + " " + metadata.optString("rights")).lowercase()
+                    val publicDomain = license.contains("publicdomain") || license.contains("public domain") || license.contains("creativecommons.org/publicdomain/zero") || license.contains("creativecommons.org/licenses/by/") || license.contains("creativecommons.org/licenses/by-sa/")
+                    if (!publicDomain) return@async null
+                    val files = metadataRoot.optJSONArray("files") ?: JSONArray()
+                    val audioFile = (0 until files.length()).mapNotNull { files.optJSONObject(it) }.firstOrNull { file ->
+                        val name = file.optString("name").lowercase()
+                        val format = file.optString("format").lowercase()
+                        name.endsWith(".mp3") && !name.contains("sample") && (format.contains("mp3") || format.contains("mpeg"))
+                    } ?: return@async null
+                    val fileName = audioFile.optString("name")
+                    val creator = item.optString("creator").ifBlank { "Unknown creator" }
+                    val language = item.optString("language").ifBlank { "Multilingual / unspecified" }
+                    val subject = item.optString("subject").take(100)
+                    val licenseLabel = when { license.contains("publicdomain") || license.contains("public domain") -> "Public Domain"; license.contains("by-sa") -> "CC BY-SA"; else -> "CC BY" }
+                    val encodedFile = fileName.split("/").joinToString("/") { URLEncoder.encode(it, "UTF-8").replace("+", "%20") }
+                    Track(id = "archive:" + identifier + ":" + fileName, title = item.optString("title", "Open audiobook"), artist = creator + " · Internet Archive · " + licenseLabel, artwork = "https://archive.org/services/img/" + identifier, streamUrl = "https://archive.org/download/" + identifier + "/" + encodedFile, isDownloadable = true, language = language, contentType = if (subject.isBlank()) "Open audiobook" else "Audiobook · " + subject, tradition = "General")
+                }
+            }.awaitAll().filterNotNull()
+        }
+    }
     private fun classifyTradition(item: JSONObject, detail: JSONObject?): String {
         // Sect placement is based only on explicit category/publisher metadata.
         // Titles and descriptive prose are deliberately excluded to avoid guessing.
