@@ -355,7 +355,7 @@ private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dis
 
 /* ---------- Artwork color extraction ---------- */
 
-private val trendingClient = OkHttpClient()
+private val artworkClient = OkHttpClient()
 
 
 /* ---------- UI ---------- */
