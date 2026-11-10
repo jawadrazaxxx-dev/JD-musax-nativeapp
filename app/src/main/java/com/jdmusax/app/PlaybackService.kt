@@ -69,7 +69,6 @@ class PlaybackService : MediaSessionService() {
             val raw = sessionPrefs.getString(KEY_ITEMS, null) ?: return
             runCatching {
                 val array = JSONArray(raw)
-                val repository = AudiusRepository()
                 val items = (0 until array.length()).mapNotNull { index ->
                     val item = array.optJSONObject(index) ?: return@mapNotNull null
                     val savedUri = item.optString("uri").takeIf(String::isNotBlank)
@@ -78,13 +77,12 @@ class PlaybackService : MediaSessionService() {
                     val savedParsedUri = Uri.parse(savedUri)
                     val isLocal = savedParsedUri.scheme == "content" || savedParsedUri.scheme == "file"
 
-                    // Audius CDN stream URLs may expire. Resolve the stable track ID again
-                    // whenever a saved remote queue is restored; keep local document URIs.
-                    val playableUri = if (isLocal || mediaId.startsWith("local:")) {
-                        savedUri
-                    } else {
-                        runCatching { repository.resolveStream(mediaId) }.getOrNull() ?: savedUri
+                    // Preserve app-owned provider URLs and local document URIs.
+                    // Legacy Audius queue entries are intentionally skipped during migration.
+                    if (!isLocal && !mediaId.startsWith("islamhouse:") && !mediaId.startsWith("librivox:")) {
+                        return@mapNotNull null
                     }
+                    val playableUri = savedUri
 
                     val metadata = MediaMetadata.Builder()
                         .setTitle(item.optString("title", "Unknown track"))
