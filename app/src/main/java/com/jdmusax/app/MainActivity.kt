@@ -333,7 +333,7 @@ private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dis
     if (url.isNullOrBlank()) return@withContext null
     runCatching {
         val request = Request.Builder().url(url).build()
-        trendingClient.newCall(request).execute().use { response ->
+        artworkClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use null
             val stream = response.body?.byteStream() ?: return@use null
             val options = BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -353,7 +353,7 @@ private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dis
     }.getOrNull()
 }
 
-/* ---------- Trending request ---------- */
+/* ---------- Artwork color extraction ---------- */
 
 private val trendingClient = OkHttpClient()
 
@@ -374,8 +374,8 @@ internal val LocalAppPalette = compositionLocalOf {
 
 private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
-    EXPLORE("Explore", Icons.Default.Explore),
-    LIBRARY("Library", Icons.Default.LibraryMusic),
+    EXPLORE("Discover", Icons.Default.Explore),
+    LIBRARY("Library", Icons.Default.MenuBook),
     SETTINGS("Settings", Icons.Default.Settings),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
