@@ -452,6 +452,8 @@ private fun JDMusaxApp(
     val saved = remember { mutableStateListOf<Track>().apply { addAll(library.load()) } }
     val savedIds = saved.map { it.id }.toSet()
     val historyStore = remember { ListeningHistoryStore(appContext) }
+    val bookmarkStore = remember { BookmarkStore(appContext) }
+    var bookmarkTracks by remember { mutableStateOf(bookmarkStore.load()) }
     var recentTracks by remember { mutableStateOf(historyStore.recent()) }
     var mostPlayedTracks by remember { mutableStateOf(historyStore.mostPlayed()) }
 
@@ -552,6 +554,16 @@ private fun JDMusaxApp(
         library.save(saved.toList())
     }
 
+    fun toggleBookmark(track: Track) {
+        bookmarkTracks = if (bookmarkTracks.any { it.id == track.id }) {
+            bookmarkStore.remove(track.id)
+            bookmarkTracks.filterNot { it.id == track.id }
+        } else {
+            bookmarkStore.add(track)
+            listOf(track) + bookmarkTracks
+        }
+    }
+
     fun runSearch(category: String = selectedCategory) {
         val requestId = ++searchGeneration
         scope.launch {
@@ -631,6 +643,10 @@ private fun JDMusaxApp(
                         onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
                         onSleepTimerChange = { sleepMinutes = it },
                         lyrics = lyricsText,
+                        isBookmarked = bookmarkTracks.any { it.id == nowPlaying!!.id },
+                        onBookmarkToggle = { toggleBookmark(nowPlaying!!) },
+                        visualizerLevels = visualizerLevels,
+                        visualizerEnabled = visualizerEnabled,
                         positionMs = positionMs,
                         durationMs = durationMs.takeIf { it > 0L } ?: (nowPlaying?.duration ?: 0L),
                         onSeekTo = { position -> positionMs = position; onSeekTo(position) },
@@ -671,6 +687,7 @@ private fun JDMusaxApp(
                     )
                     AppTab.LIBRARY -> LibraryScreen(
                         tracks = saved.toList(),
+                        bookmarkTracks = bookmarkTracks,
                         recentTracks = recentTracks,
                         mostPlayedTracks = mostPlayedTracks,
                         accent = accent,
@@ -857,6 +874,7 @@ private fun ExploreScreen(
 @Composable
 private fun LibraryScreen(
     tracks: List<Track>,
+    bookmarkTracks: List<Track>,
     recentTracks: List<Track>,
     mostPlayedTracks: List<Track>,
     accent: Color,
@@ -880,6 +898,7 @@ private fun LibraryScreen(
     }
     var selectedCollection by remember { mutableStateOf("Favorites") }
     val visibleTracks = when (selectedCollection) {
+        "Bookmarks" -> bookmarkTracks
         "Recently played" -> recentTracks
         "Most played" -> mostPlayedTracks
         else -> tracks
@@ -894,7 +913,7 @@ private fun LibraryScreen(
             }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf("Favorites", "Recently played", "Most played").forEach { collection ->
+            listOf("Favorites", "Bookmarks", "Recently played", "Most played").forEach { collection ->
                 FilterChip(selected = selectedCollection == collection, onClick = { selectedCollection = collection }, label = { Text(collection, fontSize = 11.sp) })
             }
         }
@@ -903,8 +922,8 @@ private fun LibraryScreen(
                 loading = false,
                 error = null,
                 tracks = visibleTracks,
-                emptyTitle = when (selectedCollection) { "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> "Nothing saved yet" },
-                emptySubtitle = when (selectedCollection) { "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> "Tap the heart on any track to keep it here." },
+                emptyTitle = when (selectedCollection) { "Bookmarks" -> "No bookmarks yet"; "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> "Nothing saved yet" },
+                emptySubtitle = when (selectedCollection) { "Bookmarks" -> "Bookmark a book from the player to keep it here."; "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> "Tap the heart on any track to keep it here." },
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = { track -> onPlay(track, visibleTracks) },
@@ -1062,7 +1081,9 @@ private fun NowPlayingScreen(
     palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
     onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
-    lyrics: String, positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
+    lyrics: String, isBookmarked: Boolean, onBookmarkToggle: () -> Unit,
+    visualizerLevels: List<Float>, visualizerEnabled: Boolean,
+    positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
     shuffleEnabled: Boolean, repeatMode: Int, onShuffleToggle: () -> Unit, onRepeatCycle: () -> Unit,
     onLyricsChange: (String) -> Unit
 ) {
@@ -1092,6 +1113,16 @@ private fun NowPlayingScreen(
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+            FilledTonalButton(onClick = onBookmarkToggle) {
+                Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text(if (isBookmarked) "Bookmarked" else "Bookmark book")
+            }
+        }
+        if (visualizerEnabled) {
+            AudioVisualizerStrip(levels = visualizerLevels, accent = accent, modifier = Modifier.fillMaxWidth().height(42.dp).padding(vertical = 4.dp))
+        }
         Text(
             listOf(track.contentType, when (track.language.lowercase()) { "ur" -> "Urdu"; "en" -> "English"; "ar" -> "Arabic"; else -> track.language })
                 .filter { it.isNotBlank() }.joinToString(" • "),
@@ -1181,6 +1212,16 @@ private fun NowPlayingScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun AudioVisualizerStrip(levels: List<Float>, accent: Color, modifier: Modifier = Modifier) {
+    val bars = if (levels.isEmpty()) List(32) { 0.08f } else List(32) { index -> levels[(index * levels.size / 32).coerceIn(0, levels.lastIndex)] }
+    Row(modifier, horizontalArrangement = Arrangement.spacedBy(3.dp), verticalAlignment = Alignment.CenterVertically) {
+        bars.forEach { level ->
+            Box(Modifier.weight(1f).fillMaxHeight(level.coerceIn(0.08f, 1f)).clip(RoundedCornerShape(4.dp)).background(accent))
         }
     }
 }
