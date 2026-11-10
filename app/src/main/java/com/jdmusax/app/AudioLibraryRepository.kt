@@ -49,7 +49,7 @@ class AudioLibraryRepository {
         }
 
         return coroutineScope {
-            itemLists.take(12).map { (item, type) -> async {
+            itemLists.take(8).map { (item, type) -> async {
                 val id = item.optInt("id")
                 val detail = runCatching { getJson("$ISLAMHOUSE_BASE/main/get-item/$id/$language/json") as? JSONObject }.getOrNull()
                 val attachments = detail?.optJSONArray("attachments") ?: JSONArray()
@@ -84,9 +84,11 @@ class AudioLibraryRepository {
         val books = root.optJSONArray("books") ?: root.optJSONArray("audiobooks") ?: JSONArray()
         return buildList {
             for (i in 0 until books.length()) {
+                if (size >= 100) break
                 val book = books.optJSONObject(i) ?: continue
                 val sections = book.optJSONArray("sections") ?: JSONArray()
                 for (chapter in 0 until sections.length()) {
+                    if (size >= 100) break
                     val section = sections.optJSONObject(chapter) ?: continue
                     val audioUrl = section.optString("listen_url").takeIf { it.startsWith("https://") } ?: continue
                     add(Track(
