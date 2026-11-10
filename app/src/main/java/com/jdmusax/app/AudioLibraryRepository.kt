@@ -25,19 +25,25 @@ class AudioLibraryRepository {
     suspend fun featured(section: String): List<Track> = search("", section)
 
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
-        val root = getJson("$ISLAMHOUSE_BASE/main/audios/$language/$language/1/40/json")
-        val data = when (root) {
-            is JSONArray -> root
-            is JSONObject -> root.optJSONArray("data") ?: JSONArray()
-            else -> JSONArray()
-        }
-        val items = (0 until data.length()).mapNotNull { data.optJSONObject(it) }
-            .filter { item ->
-                val text = (item.optString("title") + " " + item.optString("description")).lowercase()
-                query.isBlank() || query.lowercase() in text
+        val types = listOf("audios", "books")
+        val itemLists = types.map { type ->
+            async {
+                val root = getJson("$ISLAMHOUSE_BASE/main/$type/$language/$language/1/40/json")
+                val data = when (root) {
+                    is JSONArray -> root
+                    is JSONObject -> root.optJSONArray("data") ?: JSONArray()
+                    else -> JSONArray()
+                }
+                (0 until data.length()).mapNotNull { data.optJSONObject(it) }
+                    .filter { item ->
+                        val text = (item.optString("title") + " " + item.optString("description")).lowercase()
+                        query.isBlank() || query.lowercase() in text
+                    }.map { it to type }
             }
+        }.awaitAll().flatten()
+
         return coroutineScope {
-            items.take(15).map { item -> async {
+            itemLists.take(30).map { (item, type) -> async {
                 val id = item.optInt("id")
                 val detail = runCatching { getJson("$ISLAMHOUSE_BASE/main/get-item/$id/$language/json") as? JSONObject }.getOrNull()
                 val attachments = detail?.optJSONArray("attachments") ?: JSONArray()
@@ -56,10 +62,12 @@ class AudioLibraryRepository {
                     artist = publisher, artwork = item.optString("image").takeIf { it.startsWith("https://") },
                     streamUrl = audio?.optString("url")?.takeIf { it.startsWith("https://") },
                     isDownloadable = audio?.optString("url")?.startsWith("https://") == true,
-                    language = language, contentType = "Islamic lecture", tradition = tradition
+                    language = language,
+                    contentType = if (type == "books") "Islamic audiobook" else "Islamic lecture",
+                    tradition = tradition
                 )
             } }.awaitAll()
-        }.filter { it.streamUrl != null && (section == "All Islamic" || it.tradition == section || section == "Unclassified / General Islamic" && it.tradition == section) }
+        }.filter { it.streamUrl != null && (section == "All Islamic" || it.tradition == section) }
     }
 
     private suspend fun searchLibriVox(query: String): List<Track> {
