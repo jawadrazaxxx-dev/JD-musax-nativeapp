@@ -371,7 +371,7 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
 
 @Composable
 private fun JDMusaxApp(
-    repo: AudiusRepository,
+    repo: AudioLibraryRepository,
     library: LibraryStore,
     settings: SettingsStore,
     isPlaying: Boolean,
@@ -746,7 +746,7 @@ private fun HomeScreen(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search tracks on Audius") },
+            placeholder = { Text("Search tracks on legacy music provider") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onSearch) {
