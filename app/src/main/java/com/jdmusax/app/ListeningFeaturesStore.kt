@@ -73,6 +73,16 @@ class PlaylistStore(context: Context) {
     }
 
     @Synchronized
+    fun addTracks(id: String, tracks: List<Track>): List<AudioPlaylist> {
+        val updated = load().map { playlist ->
+            if (playlist.id == id) playlist.copy(tracks = (playlist.tracks + tracks).distinctBy { it.id })
+            else playlist
+        }
+        save(updated)
+        return updated
+    }
+
+    @Synchronized
     fun removeTrack(id: String, trackId: String): List<AudioPlaylist> {
         val updated = load().map { playlist ->
             if (playlist.id == id) playlist.copy(tracks = playlist.tracks.filterNot { it.id == trackId }) else playlist
