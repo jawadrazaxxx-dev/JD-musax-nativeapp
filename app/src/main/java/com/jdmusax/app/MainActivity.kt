@@ -278,7 +278,7 @@ class ListeningHistoryStore(context: Context) {
             put("artwork", track.artwork ?: ""); put("duration", track.duration)
             put("localUri", track.localUri ?: ""); put("streamUrl", track.streamUrl ?: "")
             put("downloadable", track.isDownloadable); put("language", track.language)
-            put("contentType", track.contentType); put("tradition", track.tradition)
+            put("contentType", track.contentType); put("tradition", track.tradition); put("externalUrl", track.externalUrl ?: "")
             put("plays", count); put("playedAt", System.currentTimeMillis())
         })
         val array = JSONArray()
@@ -291,7 +291,7 @@ class ListeningHistoryStore(context: Context) {
         duration = item.optLong("duration", 0L), localUri = item.optString("localUri").ifBlank { null },
         streamUrl = item.optString("streamUrl").ifBlank { null }, isDownloadable = item.optBoolean("downloadable", false),
         language = item.optString("language"), contentType = item.optString("contentType", "Audiobook"),
-        tradition = item.optString("tradition", "General")
+        tradition = item.optString("tradition", "General"), externalUrl = item.optString("externalUrl").ifBlank { null }
     )
     fun recent(): List<Track> = read().sortedByDescending { it.optLong("playedAt") }.map(::toTrack)
     fun mostPlayed(): List<Track> = read().sortedWith(compareByDescending<JSONObject> { it.optInt("plays") }.thenByDescending { it.optLong("playedAt") }).map(::toTrack)
@@ -316,7 +316,8 @@ class LibraryStore(context: Context) {
                         streamUrl = o.optString("streamUrl").ifBlank { null },
                         isDownloadable = o.optBoolean("isDownloadable", false),
                         language = o.optString("language"), contentType = o.optString("contentType", "Audiobook"),
-                        tradition = o.optString("tradition", "General")
+                        tradition = o.optString("tradition", "General"),
+                        externalUrl = o.optString("externalUrl").ifBlank { null }
                     )
                 }
             }
@@ -338,6 +339,7 @@ class LibraryStore(context: Context) {
                 put("language", t.language)
                 put("contentType", t.contentType)
                 put("tradition", t.tradition)
+                put("externalUrl", t.externalUrl ?: "")
             })
         }
         prefs.edit().putString("tracks", arr.toString()).apply()
