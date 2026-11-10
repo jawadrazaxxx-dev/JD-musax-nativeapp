@@ -699,7 +699,7 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "General Audiobooks")
+private val musicCategories = listOf("All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
