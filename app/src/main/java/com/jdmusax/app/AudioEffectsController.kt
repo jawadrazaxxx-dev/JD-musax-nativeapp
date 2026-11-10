@@ -87,7 +87,7 @@ class AudioEffectsController {
     @Synchronized
     fun setVisualizerEnabled(enabled: Boolean, onLevels: (List<Float>) -> Unit): Boolean {
         if (!enabled) {
-            runCatching { visualizer?.apply { setDataCaptureListener(null, 0, false, false); enabled = false; release() } }
+            runCatching { visualizer?.apply { setDataCaptureListener(null, 0, false, false); this.enabled = false; release() } }
             visualizer = null
             onLevels(emptyList())
             return true
