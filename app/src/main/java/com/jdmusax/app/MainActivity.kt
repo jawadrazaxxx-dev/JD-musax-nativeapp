@@ -212,6 +212,14 @@ class MainActivity : ComponentActivity() {
                         }
                     }
                 },
+                onEditQueue = { tracks, startIndex, position ->
+                    controller?.let { c ->
+                        val resume = c.isPlaying
+                        c.setMediaItems(tracks.map { it.mediaItem() }, startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)), position.coerceAtLeast(0L))
+                        c.prepare()
+                        if (resume) c.play()
+                    }
+                },
                 onDownload = { track ->
                     val url = track.streamUrl
                     if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
@@ -400,6 +408,7 @@ private fun JDMusaxApp(
     onPrevious: () -> Unit,
     onNext: () -> Unit,
     onPlayQueue: (List<Track>, Int) -> Unit,
+    onEditQueue: (List<Track>, Int, Long) -> Unit,
     onDownload: (Track) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onCurrentPosition: () -> Long,
@@ -657,6 +666,8 @@ private fun JDMusaxApp(
                         onPrevious = onPrevious,
                         onNext = onNext,
                         onSelectTrack = { skipTo(it) },
+                        onQueueEdit = onEditQueue,
+                        availableTracks = (results + trending + saved.toList()).distinctBy { it.id },
                         onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
                         onSleepTimerChange = { sleepMinutes = it },
                         lyrics = lyricsText,
@@ -1230,7 +1241,8 @@ private fun NowPlayingScreen(
     track: Track, queue: List<Track>, currentIndex: Int, isPlaying: Boolean,
     palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
-    onSelectTrack: (Int) -> Unit, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
+    onSelectTrack: (Int) -> Unit, onQueueEdit: (List<Track>, Int, Long) -> Unit,
+    availableTracks: List<Track>, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
     lyrics: String, isBookmarked: Boolean, onBookmarkToggle: () -> Unit,
     visualizerLevels: List<Float>, visualizerEnabled: Boolean,
     positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
@@ -1356,10 +1368,35 @@ private fun NowPlayingScreen(
             OutlinedTextField(value = lyrics, onValueChange = onLyricsChange, modifier = Modifier.fillMaxWidth().heightIn(min = 80.dp, max = 140.dp),
                 placeholder = { Text("[00:12.00] Lyrics line…") }, label = { Text("Track lyrics (.LRC supported)") })
         } else {
+            var showQueueAdd by remember { mutableStateOf(false) }
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text("Up next", color = palette.text, fontWeight = FontWeight.Bold, fontSize = 17.sp)
                 Spacer(Modifier.weight(1f))
+                TextButton(onClick = { showQueueAdd = true }) { Icon(Icons.Default.Add, null); Text("Add") }
                 Text(queue.size.toString() + " tracks", color = palette.muted, fontSize = 12.sp)
+            }
+            if (showQueueAdd) {
+                val candidates = availableTracks.filter { candidate -> queue.none { it.id == candidate.id } }
+                AlertDialog(
+                    onDismissRequest = { showQueueAdd = false },
+                    title = { Text("Add to queue") },
+                    text = {
+                        LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                            items(candidates, key = { it.id }) { candidate ->
+                                TextButton(onClick = {
+                                    onQueueEdit(QueueEditor.append(queue, listOf(candidate)), currentIndex, positionMs)
+                                    showQueueAdd = false
+                                }) {
+                                    Column(Modifier.fillMaxWidth()) {
+                                        Text(candidate.title, color = palette.text, maxLines = 1)
+                                        Text(candidate.artist, color = palette.muted, fontSize = 11.sp, maxLines = 1)
+                                    }
+                                }
+                            }
+                        }
+                    },
+                    confirmButton = { TextButton(onClick = { showQueueAdd = false }) { Text("Close") } }
+                )
             }
             LazyColumn(Modifier.fillMaxWidth().weight(1f, fill = false).heightIn(max = 150.dp)) {
                 items(queue.size) { index ->
@@ -1373,6 +1410,23 @@ private fun NowPlayingScreen(
                             Text(item.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
                         }
                         if (index == currentIndex) Icon(Icons.Default.Equalizer, null, tint = accent)
+                        IconButton(onClick = {
+                            if (index > 0) {
+                                val moved = QueueEditor.move(queue, index, index - 1)
+                                val nextIndex = when (currentIndex) { index -> index - 1; index - 1 -> index; else -> currentIndex }
+                                onQueueEdit(moved, nextIndex, positionMs)
+                            }
+                        }, enabled = index > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move up", tint = palette.muted) }
+                        IconButton(onClick = {
+                            val updated = QueueEditor.remove(queue, index)
+                            val nextIndex = when {
+                                updated.isEmpty() -> 0
+                                index < currentIndex -> currentIndex - 1
+                                index == currentIndex -> index.coerceAtMost(updated.lastIndex)
+                                else -> currentIndex
+                            }
+                            onQueueEdit(updated, nextIndex, if (index == currentIndex) 0L else positionMs)
+                        }) { Icon(Icons.Default.Close, "Remove from queue", tint = palette.muted) }
                     }
                 }
             }
