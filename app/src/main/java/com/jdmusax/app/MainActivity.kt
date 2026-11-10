@@ -199,9 +199,8 @@ class MainActivity : ComponentActivity() {
                 onNext = { controller?.seekToNextMediaItem() },
                 onPlayQueue = { tracks, startIndex ->
                     lifecycleScope.launch {
-                        val playable = tracks.mapNotNull { track ->
-                            if (track.localUri != null || track.streamUrl?.startsWith("https://") == true) track
-                            else runCatching { track.copy(streamUrl = repo.resolveStream(track)) }.getOrNull()
+                        val playable = tracks.filter { track ->
+                            track.localUri != null || track.streamUrl?.startsWith("https://") == true
                         }
                         if (playable.isNotEmpty()) {
                             val safeIndex = startIndex.coerceIn(0, playable.lastIndex)
