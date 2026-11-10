@@ -670,7 +670,11 @@ private fun JDMusaxApp(
                         savedIds = savedIds,
                         onPlay = { play(it, results) },
                         onToggleSave = { toggleSave(it) },
-                        onDownload = onDownload
+                        onDownload = onDownload,
+                        recentTracks = recentTracks,
+                        mostPlayedTracks = mostPlayedTracks,
+                        onPlayMix = { mix -> if (mix.isNotEmpty()) play(mix.first(), mix) },
+                        onContinue = { track -> play(track, recentTracks) }
                     )
                     AppTab.EXPLORE -> ExploreScreen(
                         loading = trendingLoading,
@@ -786,11 +790,26 @@ private fun HomeScreen(
     savedIds: Set<String>,
     onPlay: (Track) -> Unit,
     onToggleSave: (Track) -> Unit,
-    onDownload: (Track) -> Unit
+    onDownload: (Track) -> Unit,
+    recentTracks: List<Track>,
+    mostPlayedTracks: List<Track>,
+    onPlayMix: (List<Track>) -> Unit,
+    onContinue: (Track) -> Unit
  ) {
     val palette = LocalAppPalette.current
+    val dailyMix = (mostPlayedTracks.take(8) + recentTracks).distinctBy { it.id }.take(12)
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         ScreenHeader("JD musax", "AUDIOBOOKS • ISLAMIC AUDIO • YOUR LIBRARY")
+        if (dailyMix.isNotEmpty()) {
+            HomeListeningHighlights(
+                recentTrack = recentTracks.firstOrNull(),
+                mixCount = dailyMix.size,
+                listenedCount = recentTracks.size,
+                accent = accent,
+                onPlayMix = { onPlayMix(dailyMix) },
+                onContinue = { recentTracks.firstOrNull()?.let(onContinue) }
+            )
+        }
         CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
@@ -827,6 +846,60 @@ private fun HomeScreen(
                 onToggleSave = onToggleSave,
                 onDownload = onDownload
             )
+        }
+    }
+}
+
+@Composable
+private fun HomeListeningHighlights(
+    recentTrack: Track?,
+    mixCount: Int,
+    listenedCount: Int,
+    accent: Color,
+    onPlayMix: () -> Unit,
+    onContinue: () -> Unit
+) {
+    val palette = LocalAppPalette.current
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 10.dp)) {
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = palette.surfaceVariant,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text("YOUR PERSONAL MIX", color = accent, fontSize = 10.sp, letterSpacing = 1.4.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.height(3.dp))
+                    Text("A mix built from your listening", color = palette.text, fontWeight = FontWeight.SemiBold)
+                    Text("$mixCount tracks · $listenedCount recently played", color = palette.muted, fontSize = 11.sp)
+                }
+                FilledTonalButton(onClick = onPlayMix) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null)
+                    Spacer(Modifier.width(5.dp))
+                    Text("Play mix")
+                }
+            }
+        }
+        if (recentTrack != null) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = palette.surface,
+                modifier = Modifier.fillMaxWidth().clickable(onClick = onContinue)
+            ) {
+                Row(Modifier.padding(horizontal = 12.dp, vertical = 9.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.History, contentDescription = null, tint = accent)
+                    Spacer(Modifier.width(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("PICK UP WHERE YOU LEFT OFF", color = palette.muted, fontSize = 9.sp, letterSpacing = 1.sp)
+                        Text(recentTrack.title, color = palette.text, maxLines = 1, fontWeight = FontWeight.Medium)
+                        Text(recentTrack.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
+                    }
+                    Icon(Icons.Default.PlayCircle, contentDescription = "Continue listening", tint = accent, modifier = Modifier.size(27.dp))
+                }
+            }
         }
     }
 }
