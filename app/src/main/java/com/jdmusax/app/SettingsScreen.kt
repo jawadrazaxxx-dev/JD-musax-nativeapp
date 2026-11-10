@@ -170,7 +170,7 @@ fun SettingsScreen(
                 } else {
                     Text("Presets", color = palette.muted, fontSize = 12.sp)
                     Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        listOf("Flat", "Bass", "Treble", "Vocal").forEachIndexed { index, label ->
+                        audioPresets.forEachIndexed { index, label ->
                             FilterChip(
                                 selected = false,
                                 onClick = { onPresetChange(index) },
