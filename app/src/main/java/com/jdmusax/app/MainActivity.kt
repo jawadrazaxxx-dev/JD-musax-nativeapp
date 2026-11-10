@@ -215,7 +215,7 @@ class MainActivity : ComponentActivity() {
                 onDownload = { track ->
                     val url = track.streamUrl
                     if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
-                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80)
+                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "JD-musax-audio" }
                         val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
                         val request = DownloadManager.Request(Uri.parse(url))
                             .setTitle(track.title)
