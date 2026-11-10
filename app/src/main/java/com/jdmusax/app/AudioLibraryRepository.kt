@@ -12,6 +12,7 @@ import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
 
+// Remote catalogue adapters for Islamic audio and public-domain audiobooks.
 class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
