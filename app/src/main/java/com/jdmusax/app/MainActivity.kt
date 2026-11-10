@@ -261,7 +261,9 @@ class ListeningHistoryStore(context: Context) {
         entries.add(0, JSONObject().apply {
             put("id", track.id); put("title", track.title); put("artist", track.artist)
             put("artwork", track.artwork ?: ""); put("duration", track.duration)
-            put("localUri", track.localUri ?: ""); put("downloadable", track.isDownloadable)
+            put("localUri", track.localUri ?: ""); put("streamUrl", track.streamUrl ?: "")
+            put("downloadable", track.isDownloadable); put("language", track.language)
+            put("contentType", track.contentType); put("tradition", track.tradition)
             put("plays", count); put("playedAt", System.currentTimeMillis())
         })
         val array = JSONArray()
@@ -272,7 +274,9 @@ class ListeningHistoryStore(context: Context) {
         id = item.optString("id"), title = item.optString("title", "Unknown track"),
         artist = item.optString("artist", "Unknown artist"), artwork = item.optString("artwork").ifBlank { null },
         duration = item.optLong("duration", 0L), localUri = item.optString("localUri").ifBlank { null },
-        isDownloadable = item.optBoolean("downloadable", false)
+        streamUrl = item.optString("streamUrl").ifBlank { null }, isDownloadable = item.optBoolean("downloadable", false),
+        language = item.optString("language"), contentType = item.optString("contentType", "Audiobook"),
+        tradition = item.optString("tradition", "General")
     )
     fun recent(): List<Track> = read().sortedByDescending { it.optLong("playedAt") }.map(::toTrack)
     fun mostPlayed(): List<Track> = read().sortedWith(compareByDescending<JSONObject> { it.optInt("plays") }.thenByDescending { it.optLong("playedAt") }).map(::toTrack)
@@ -294,7 +298,10 @@ class LibraryStore(context: Context) {
                         artwork = o.optString("artwork").ifBlank { null },
                         duration = o.optLong("duration", 0L),
                         localUri = o.optString("localUri").ifBlank { null },
-                        isDownloadable = o.optBoolean("isDownloadable", false)
+                        streamUrl = o.optString("streamUrl").ifBlank { null },
+                        isDownloadable = o.optBoolean("isDownloadable", false),
+                        language = o.optString("language"), contentType = o.optString("contentType", "Audiobook"),
+                        tradition = o.optString("tradition", "General")
                     )
                 }
             }
@@ -311,7 +318,11 @@ class LibraryStore(context: Context) {
                 put("artwork", t.artwork ?: "")
                 put("duration", t.duration)
                 put("localUri", t.localUri ?: "")
+                put("streamUrl", t.streamUrl ?: "")
                 put("isDownloadable", t.isDownloadable)
+                put("language", t.language)
+                put("contentType", t.contentType)
+                put("tradition", t.tradition)
             })
         }
         prefs.edit().putString("tracks", arr.toString()).apply()
