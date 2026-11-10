@@ -46,6 +46,7 @@ class BookmarkStore(context: Context) {
                 put("language", track.language)
                 put("contentType", track.contentType)
                 put("tradition", track.tradition)
+                put("externalUrl", track.externalUrl ?: "")
             })
         }
         prefs.edit().putString("entries", array.toString()).apply()
@@ -62,6 +63,7 @@ class BookmarkStore(context: Context) {
         isDownloadable = item.optBoolean("downloadable"),
         language = item.optString("language"),
         contentType = item.optString("contentType", "Audiobook"),
-        tradition = item.optString("tradition", "General")
+        tradition = item.optString("tradition", "General"),
+        externalUrl = item.optString("externalUrl").ifBlank { null }
     )
 }
