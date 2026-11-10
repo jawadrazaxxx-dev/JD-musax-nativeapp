@@ -59,7 +59,7 @@ import org.json.JSONObject
 @OptIn(UnstableApi::class)
 class MainActivity : ComponentActivity() {
     private var controller: MediaController? = null
-    private val repo = AudiusRepository()
+    private val repo = AudioLibraryRepository()
     private val listeningHistory by lazy { ListeningHistoryStore(applicationContext) }
     private var playing by mutableStateOf(false)
     private var sessionTracks by mutableStateOf(emptyList<Track>())
@@ -199,8 +199,8 @@ class MainActivity : ComponentActivity() {
                 onPlayQueue = { tracks, startIndex ->
                     lifecycleScope.launch {
                         val playable = tracks.mapNotNull { track ->
-                            if (track.localUri != null) track
-                            else runCatching { track.copy(streamUrl = repo.resolveStream(track.id)) }.getOrNull()
+                            if (track.localUri != null || track.streamUrl?.startsWith("https://") == true) track
+                            else runCatching { track.copy(streamUrl = repo.resolveStream(track)) }.getOrNull()
                         }
                         if (playable.isNotEmpty()) {
                             val safeIndex = startIndex.coerceIn(0, playable.lastIndex)
@@ -213,13 +213,15 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onDownload = { track ->
-                    if (track.isDownloadable) {
+                    val url = track.streamUrl
+                    if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
                         val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80)
-                        val request = DownloadManager.Request(Uri.parse("https://api.audius.co/v1/tracks/${track.id}/download?app_name=JDmusax"))
+                        val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
+                        val request = DownloadManager.Request(Uri.parse(url))
                             .setTitle(track.title)
-                            .setDescription("Downloading an Audius track marked downloadable")
+                            .setDescription("Downloading audio for offline listening")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.mp3")
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.$extension")
                         (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                     }
                 }
@@ -344,19 +346,6 @@ private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dis
 
 private val trendingClient = OkHttpClient()
 
-private suspend fun fetchTrending(): List<Track> = withContext(Dispatchers.IO) {
-    val request = Request.Builder()
-        .url("https://api.audius.co/v1/tracks/trending?limit=25&app_name=JDmusax")
-        .build()
-    trendingClient.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) error("Trending failed: ${response.code}")
-        val body = response.body?.string() ?: return@withContext emptyList()
-        val data = JSONObject(body).optJSONArray("data") ?: return@withContext emptyList()
-        (0 until data.length()).mapNotNull { i ->
-            data.optJSONObject(i)?.let(Track::fromAudius)
-        }
-    }
-}
 
 /* ---------- UI ---------- */
 
@@ -518,7 +507,7 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Pakistani") }
+    var selectedCategory by remember { mutableStateOf("All Islamic") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -555,7 +544,7 @@ private fun JDMusaxApp(
         scope.launch {
             searching = true
             searchError = null
-            runCatching { repo.search("${selectedCategory} $query") }
+            runCatching { repo.search(query, selectedCategory) }
                 .onSuccess { results = it }
                 .onFailure { searchError = it.message ?: "Search failed" }
             searching = false
@@ -567,7 +556,7 @@ private fun JDMusaxApp(
         scope.launch {
             trendingLoading = true
             trendingError = null
-            runCatching { repo.search("${categoryQuery(selectedCategory)} music") }
+            runCatching { repo.featured(selectedCategory) }
                 .onSuccess { trending = it; trendingLoaded = true }
                 .onFailure { trendingError = it.message ?: "Could not load trending" }
             trendingLoading = false
@@ -592,21 +581,20 @@ private fun JDMusaxApp(
             containerColor = palette.background,
             bottomBar = {
                 NavigationBar(containerColor = palette.surface) {
-                        AppTab.values().forEach { t ->
-                            NavigationBarItem(
-                                selected = tab == t,
-                                onClick = { tab = t },
-                                icon = { Icon(t.icon, contentDescription = null) },
-                                label = { Text(t.label) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
-                                    selectedTextColor = accent,
-                                    indicatorColor = accent,
-                                    unselectedIconColor = palette.muted,
-                                    unselectedTextColor = palette.muted
-                                )
+                    AppTab.values().forEach { t ->
+                        NavigationBarItem(
+                            selected = tab == t,
+                            onClick = { tab = t },
+                            icon = { Icon(t.icon, contentDescription = null) },
+                            label = { Text(t.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
+                                selectedTextColor = accent,
+                                indicatorColor = accent,
+                                unselectedIconColor = palette.muted,
+                                unselectedTextColor = palette.muted
                             )
-                        }
+                        )
                     }
                 }
             }
@@ -711,16 +699,7 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("Pakistani", "Indian", "Hollywood", "Lollywood", "Hindi")
-
-private fun categoryQuery(category: String): String = when (category) {
-    "Pakistani" -> "Pakistani"
-    "Indian" -> "Indian"
-    "Hollywood" -> "Hollywood"
-    "Lollywood" -> "Lollywood"
-    "Hindi" -> "Hindi"
-    else -> "Pakistani"
-}
+private val musicCategories = listOf("All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "General Audiobooks")
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
