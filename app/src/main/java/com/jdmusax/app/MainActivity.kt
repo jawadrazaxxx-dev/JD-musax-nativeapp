@@ -550,12 +550,12 @@ private fun JDMusaxApp(
         library.save(saved.toList())
     }
 
-    fun runSearch() {
+    fun runSearch(category: String = selectedCategory) {
         if (query.isBlank()) return
         scope.launch {
             searching = true
             searchError = null
-            runCatching { repo.search(query, selectedCategory) }
+            runCatching { repo.search(query, category) }
                 .onSuccess { results = it }
                 .onFailure { searchError = it.message ?: "Search failed" }
             searching = false
@@ -567,7 +567,7 @@ private fun JDMusaxApp(
         scope.launch {
             trendingLoading = true
             trendingError = null
-            runCatching { repo.featured(selectedCategory) }
+            runCatching { repo.featured(category) }
                 .onSuccess { trending = it; trendingLoaded = true }
                 .onFailure { trendingError = it.message ?: "Could not load trending" }
             trendingLoading = false
@@ -636,7 +636,7 @@ private fun JDMusaxApp(
                         query = query,
                         onQueryChange = { query = it },
                         category = selectedCategory,
-                        onCategoryChange = { selectedCategory = it; runSearch() },
+                        onCategoryChange = { selectedCategory = it; runSearch(it) },
                         onSearch = { runSearch() },
                         loading = searching,
                         error = searchError,
