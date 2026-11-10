@@ -810,7 +810,7 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("Shia Sources", "All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
+private val musicCategories = listOf("All Audio Sources", "Shia Sources", "Audiobooks", "Nohay & Marsiya", "Quran & Recitation", "Majlis & Lectures", "Islamic Podcasts", "All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
@@ -831,7 +831,11 @@ private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accen
                             "Comparative Islamic Studies" -> Icons.Default.CompareArrows
                             "Other Islamic Perspectives" -> Icons.Default.Public
                             "General Audiobooks" -> Icons.Default.Headphones
-                            "Shia Sources" -> Icons.Default.OpenInNew
+                            "Shia Sources", "All Audio Sources" -> Icons.Default.OpenInNew
+                            "Audiobooks" -> Icons.Default.MenuBook
+                            "Nohay & Marsiya" -> Icons.Default.MusicNote
+                            "Quran & Recitation" -> Icons.Default.AutoStories
+                            "Majlis & Lectures", "Islamic Podcasts" -> Icons.Default.Headphones
                             else -> Icons.Default.MenuBook
                         },
                         contentDescription = null,
