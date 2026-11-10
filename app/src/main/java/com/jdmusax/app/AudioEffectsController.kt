@@ -96,7 +96,7 @@ class AudioEffectsController {
         return runCatching {
             val current = visualizer ?: Visualizer(audioSessionId)
             visualizer = current
-            val range = current.captureSizeRange
+            val range = Visualizer.getCaptureSizeRange()
             val desired = 1024.coerceIn(range[0], range[1])
             val size = Integer.highestOneBit(desired).coerceAtLeast(range[0])
             current.captureSize = size
