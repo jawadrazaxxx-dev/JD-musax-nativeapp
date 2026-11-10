@@ -456,6 +456,10 @@ private fun JDMusaxApp(
     var bookmarkTracks by remember { mutableStateOf(bookmarkStore.load()) }
     var recentTracks by remember { mutableStateOf(historyStore.recent()) }
     var mostPlayedTracks by remember { mutableStateOf(historyStore.mostPlayed()) }
+    val playlistStore = remember { PlaylistStore(appContext) }
+    var playlists by remember { mutableStateOf(playlistStore.load()) }
+    val progressStore = remember { ListeningProgressStore(appContext) }
+    var savedProgressMs by remember(nowPlaying?.id) { mutableLongStateOf(nowPlaying?.let { progressStore.load(it.id) } ?: 0L) }
 
     LaunchedEffect(sessionTracks, sessionIndex) {
         if (sessionTracks.isNotEmpty() && sessionIndex in sessionTracks.indices) {
@@ -507,6 +511,7 @@ private fun JDMusaxApp(
         while (isPlaying && nowPlaying != null) {
             delay(500L)
             refreshPlaybackPosition()
+            nowPlaying?.let { progressStore.save(it.id, positionMs) }
         }
     }
 
@@ -654,7 +659,10 @@ private fun JDMusaxApp(
                         repeatMode = repeatMode,
                         onShuffleToggle = { shuffleEnabled = !shuffleEnabled; onShuffleChange(shuffleEnabled) },
                         onRepeatCycle = { repeatMode = when (repeatMode) { Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL; Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE; else -> Player.REPEAT_MODE_OFF }; onRepeatModeChange(repeatMode) },
-                        onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } }
+                        onLyricsChange = { text -> lyricsText = text; nowPlaying?.let { lyricsStore.save(it.id, text) } },
+                        savedProgressMs = savedProgressMs,
+                        onSaveProgress = { nowPlaying?.let { progressStore.save(it.id, positionMs); savedProgressMs = positionMs } },
+                        onResumeProgress = { nowPlaying?.let { onSeekTo(progressStore.load(it.id)); savedProgressMs = progressStore.load(it.id) } }
                     )
                 } else when (tab) {
                     AppTab.HOME -> HomeScreen(
@@ -694,6 +702,9 @@ private fun JDMusaxApp(
                         bookmarkTracks = bookmarkTracks,
                         recentTracks = recentTracks,
                         mostPlayedTracks = mostPlayedTracks,
+                        playlists = playlists,
+                        onCreatePlaylist = { name -> playlists = playlistStore.create(name, saved.toList()) },
+                        onDeletePlaylist = { id -> playlists = playlistStore.delete(id) },
                         accent = accent,
                         savedIds = savedIds,
                         onPlay = { track, queue -> play(track, queue) },
@@ -950,6 +961,9 @@ private fun LibraryScreen(
     bookmarkTracks: List<Track>,
     recentTracks: List<Track>,
     mostPlayedTracks: List<Track>,
+    playlists: List<AudioPlaylist>,
+    onCreatePlaylist: (String) -> Unit,
+    onDeletePlaylist: (String) -> Unit,
     accent: Color,
     savedIds: Set<String>,
     onPlay: (Track, List<Track>) -> Unit,
@@ -970,11 +984,14 @@ private fun LibraryScreen(
         if (imported.isNotEmpty()) onImport(imported)
     }
     var selectedCollection by remember { mutableStateOf("Favorites") }
+    var showCreatePlaylist by remember { mutableStateOf(false) }
+    var playlistName by remember { mutableStateOf("") }
+    val activePlaylist = playlists.firstOrNull { selectedCollection == it.id }
     val visibleTracks = when (selectedCollection) {
         "Bookmarks" -> bookmarkTracks
         "Recently played" -> recentTracks
         "Most played" -> mostPlayedTracks
-        else -> tracks
+        else -> activePlaylist?.tracks ?: tracks
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -985,18 +1002,55 @@ private fun LibraryScreen(
                 Text("Import")
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
-            listOf("Favorites", "Bookmarks", "Recently played", "Most played").forEach { collection ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                Text("LISTENING SNAPSHOT", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                Text("${recentTracks.size} recent · ${mostPlayedTracks.size} most played · ${tracks.size} favorites", color = palette.muted, fontSize = 11.sp)
+            }
+            FilledTonalButton(onClick = { showCreatePlaylist = true }, enabled = tracks.isNotEmpty()) {
+                Icon(Icons.Default.PlaylistAdd, contentDescription = null)
+                Text("New playlist")
+            }
+        }
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
+            items(listOf("Favorites", "Bookmarks", "Recently played", "Most played")) { collection ->
                 FilterChip(selected = selectedCollection == collection, onClick = { selectedCollection = collection }, label = { Text(collection, fontSize = 11.sp) })
             }
+            items(playlists, key = { it.id }) { playlist ->
+                FilterChip(selected = selectedCollection == playlist.id, onClick = { selectedCollection = playlist.id }, label = { Text(playlist.name, fontSize = 11.sp) })
+            }
+        }
+        if (activePlaylist != null) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text("${activePlaylist.tracks.size} tracks in ${activePlaylist.name}", color = palette.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onDeletePlaylist(activePlaylist.id); selectedCollection = "Favorites" }) { Text("Delete playlist", color = accent) }
+            }
+        }
+        if (showCreatePlaylist) {
+            AlertDialog(
+                onDismissRequest = { showCreatePlaylist = false },
+                title = { Text("Create playlist") },
+                text = {
+                    Column {
+                        Text("Create a playlist from your current Favorites collection.", color = palette.muted, fontSize = 12.sp)
+                        Spacer(Modifier.height(10.dp))
+                        OutlinedTextField(value = playlistName, onValueChange = { playlistName = it.take(48) }, label = { Text("Playlist name") }, singleLine = true)
+                    }
+                },
+                confirmButton = {
+                    TextButton(onClick = { onCreatePlaylist(playlistName); playlistName = ""; showCreatePlaylist = false }) { Text("Create") }
+                },
+                dismissButton = { TextButton(onClick = { showCreatePlaylist = false }) { Text("Cancel") }
+                }
+            )
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             TrackContent(
                 loading = false,
                 error = null,
                 tracks = visibleTracks,
-                emptyTitle = when (selectedCollection) { "Bookmarks" -> "No bookmarks yet"; "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> "Nothing saved yet" },
-                emptySubtitle = when (selectedCollection) { "Bookmarks" -> "Bookmark a book from the player to keep it here."; "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> "Tap the heart on any track to keep it here." },
+                emptyTitle = when (selectedCollection) { "Bookmarks" -> "No bookmarks yet"; "Recently played" -> "Nothing played yet"; "Most played" -> "No listening stats yet"; else -> if (activePlaylist != null) "This playlist is empty" else "Nothing saved yet" },
+                emptySubtitle = when (selectedCollection) { "Bookmarks" -> "Bookmark a book from the player to keep it here."; "Recently played" -> "Tracks you play will appear here."; "Most played" -> "Your most-played tracks will build up here."; else -> if (activePlaylist != null) "Add favorites to your library, then create a new playlist." else "Tap the heart on any track to keep it here." },
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = { track -> onPlay(track, visibleTracks) },
@@ -1158,7 +1212,10 @@ private fun NowPlayingScreen(
     visualizerLevels: List<Float>, visualizerEnabled: Boolean,
     positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
     shuffleEnabled: Boolean, repeatMode: Int, onShuffleToggle: () -> Unit, onRepeatCycle: () -> Unit,
-    onLyricsChange: (String) -> Unit
+    onLyricsChange: (String) -> Unit,
+    savedProgressMs: Long,
+    onSaveProgress: () -> Unit,
+    onResumeProgress: () -> Unit
 ) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -1186,11 +1243,22 @@ private fun NowPlayingScreen(
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
             FilledTonalButton(onClick = onBookmarkToggle) {
                 Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null)
                 Spacer(Modifier.width(6.dp))
                 Text(if (isBookmarked) "Bookmarked" else "Bookmark book")
+            }
+            FilledTonalButton(onClick = onSaveProgress) {
+                Icon(Icons.Default.Flag, contentDescription = null)
+                Spacer(Modifier.width(5.dp))
+                Text("Save position")
+            }
+        }
+        if (savedProgressMs > 10_000L && savedProgressMs < durationMs - 10_000L) {
+            TextButton(onClick = onResumeProgress) {
+                Icon(Icons.Default.RestartAlt, contentDescription = null)
+                Text("Resume saved position · ${formatPlaybackTime(savedProgressMs)}", color = accent)
             }
         }
         if (visualizerEnabled) {
