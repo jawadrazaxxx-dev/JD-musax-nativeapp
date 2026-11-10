@@ -9,6 +9,9 @@ The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3
 ## Highlights
 
 - Native Compose interface with Light, Dark, and AMOLED themes.
+- Privacy-conscious local library: saved tracks, playlists, bookmarks, listening history, and progress stay on-device; no account is required.
+- Optional audio visualizer permission is requested only when the user enables the visualizer.
+- Playback session restoration supports secure HTTPS provider streams and local document URIs.
 - Separate Discover tabs for Shia Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, and Shia Podcasts.
 - Shia-focused catalogue discovery across publisher websites, community platforms, and documented audio APIs.
 - External-only sources open their original provider; the app does not bypass access, DRM, or download restrictions.
