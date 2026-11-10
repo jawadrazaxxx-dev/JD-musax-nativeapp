@@ -428,6 +428,7 @@ private fun JDMusaxApp(
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
+    var audioTheme by remember { mutableStateOf(settings.getAudioTheme()) }
     var appearanceMode by remember { mutableStateOf(settings.getAppearanceMode()) }
     var artworkAccent by remember { mutableStateOf<Color?>(null) }
     val fixedAccent = when (accentName) {
@@ -674,7 +675,7 @@ private fun JDMusaxApp(
                 if (tab == AppTab.PLAYER && nowPlaying != null) {
                     NowPlayingScreen(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
-                        isPlaying = isPlaying, palette = palette, accent = accent, speed = playbackSpeed,
+                        isPlaying = isPlaying, palette = palette, accent = accent, audioTheme = audioTheme, speed = playbackSpeed,
                         sleepMinutes = sleepMinutes, onClose = { tab = AppTab.HOME }, onToggle = onToggle,
                         onPrevious = onPrevious,
                         onNext = onNext,
@@ -768,6 +769,8 @@ private fun JDMusaxApp(
                     AppTab.SETTINGS -> SettingsScreen(
                         accentName = accentName,
                         dynamicTheme = dynamicTheme,
+                        audioTheme = audioTheme,
+                        onAudioThemeChange = { theme -> audioTheme = theme; settings.setAudioTheme(theme) },
                         onAccentChange = { name ->
                             accentName = name
                             settings.setAccent(name)
@@ -1274,7 +1277,7 @@ private fun TrackRow(
 @Composable
 private fun NowPlayingScreen(
     track: Track, queue: List<Track>, currentIndex: Int, isPlaying: Boolean,
-    palette: AppPalette, accent: Color, speed: Float, sleepMinutes: Int,
+    palette: AppPalette, accent: Color, audioTheme: String, speed: Float, sleepMinutes: Int,
     onClose: () -> Unit, onToggle: () -> Unit, onPrevious: () -> Unit, onNext: () -> Unit,
     onSelectTrack: (Int) -> Unit, onQueueEdit: (List<Track>, Int, Long) -> Unit,
     availableTracks: List<Track>, onSpeedChange: (Float) -> Unit, onSleepTimerChange: (Int) -> Unit,
@@ -1288,7 +1291,16 @@ private fun NowPlayingScreen(
     onResumeProgress: () -> Unit
 ) {
     val themeMotion by animateFloatAsState(targetValue = if (isPlaying) 1f else 0.25f, label = "audioThemeMotion")
-    val themeBrush = Brush.linearGradient(listOf(accent.copy(alpha = 0.20f * themeMotion), palette.background, accent.copy(alpha = 0.08f * themeMotion)))
+    val themeColors = when (audioTheme) {
+        "aurora" -> listOf(Color(0xFF164E63), Color(0xFF312E81), palette.background)
+        "neon" -> listOf(Color(0xFF3B0764), Color(0xFF0E7490), palette.background)
+        "ocean" -> listOf(Color(0xFF082F49), Color(0xFF155E75), palette.background)
+        "sunset" -> listOf(Color(0xFF7C2D12), Color(0xFF9D174D), palette.background)
+        "forest" -> listOf(Color(0xFF14532D), Color(0xFF365314), palette.background)
+        "artwork" -> listOf(accent.copy(alpha = 0.30f), palette.background, accent.copy(alpha = 0.10f))
+        else -> listOf(palette.background, palette.background, palette.background)
+    }
+    val themeBrush = Brush.linearGradient(themeColors.mapIndexed { index, color -> color.copy(alpha = if (index == 2) 1f else color.alpha * themeMotion) })
     Column(Modifier.fillMaxSize().background(themeBrush).verticalScroll(rememberScrollState()).padding(horizontal = 22.dp, vertical = 12.dp), horizontalAlignment = Alignment.CenterHorizontally) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = onClose) { Icon(Icons.Default.KeyboardArrowDown, "Close player", tint = palette.text) }
