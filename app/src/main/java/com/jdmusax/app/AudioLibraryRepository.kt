@@ -88,19 +88,24 @@ class AudioLibraryRepository {
     }
 
     private fun classifyTradition(item: JSONObject, detail: JSONObject?): String {
-        val text = buildString {
-            append(item.optString("title")).append(' ').append(item.optString("description")).append(' ')
-            append(detail?.optString("full_description").orEmpty()).append(' ')
+        // Sect placement is based only on explicit category/publisher metadata.
+        // Titles and descriptive prose are deliberately excluded to avoid guessing.
+        val metadata = buildString {
             for (array in listOf(item.optJSONArray("categories"), detail?.optJSONArray("categories"),
                 item.optJSONArray("prepared_by"), detail?.optJSONArray("prepared_by"))) {
-                if (array != null) for (i in 0 until array.length()) append(array.optJSONObject(i)?.toString().orEmpty()).append(' ')
+                if (array != null) for (i in 0 until array.length()) {
+                    val entry = array.optJSONObject(i) ?: continue
+                    append(entry.optString("title")).append(' ')
+                    append(entry.optString("name")).append(' ')
+                    append(entry.optString("type")).append(' ')
+                }
             }
         }.lowercase()
         return when {
-            listOf("shia", "shi'a", "ja'fari", "jafari", "ithna ashari").any(text::contains) -> "Shia Library"
-            listOf("sunni", "ahl al-sunnah", "ahlus sunnah").any(text::contains) -> "Sunni Library"
-            listOf("comparative islam", "inter-sect", "sectarian comparison").any(text::contains) -> "Comparative Islamic Studies"
-            listOf("ibadi", "ismaili", "sufi").any(text::contains) -> "Other Islamic Perspectives"
+            listOf("shia", "shi'a", "ja'fari", "jafari", "ithna ashari").any(metadata::contains) -> "Shia Library"
+            listOf("sunni", "ahl al-sunnah", "ahlus sunnah").any(metadata::contains) -> "Sunni Library"
+            listOf("comparative islam", "inter-sect", "sectarian comparison").any(metadata::contains) -> "Comparative Islamic Studies"
+            listOf("ibadi", "ismaili", "sufi").any(metadata::contains) -> "Other Islamic Perspectives"
             else -> "Unclassified / General Islamic"
         }
     }
