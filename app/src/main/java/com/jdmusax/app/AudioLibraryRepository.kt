@@ -118,7 +118,7 @@ class AudioLibraryRepository {
             listOf("shia", "shi'a", "ja'fari", "jafari", "ithna ashari").any(metadata::contains) -> "Shia Library"
             listOf("sunni", "ahl al-sunnah", "ahlus sunnah").any(metadata::contains) -> "Sunni Library"
             listOf("comparative islam", "inter-sect", "sectarian comparison").any(metadata::contains) -> "Comparative Islamic Studies"
-            listOf("ibadi", "ismaili", "sufi").any(metadata::contains) -> "Other Islamic Perspectives"
+            listOf("ibadi", "ismaili", "zaydi", "zaidi").any(metadata::contains) -> "Other Islamic Perspectives"
             else -> "Unclassified / General Islamic"
         }
     }
