@@ -11,6 +11,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.net.URLEncoder
 import java.util.concurrent.TimeUnit
+import org.xmlpull.v1.XmlPullParser
+import org.xmlpull.v1.XmlPullParserFactory
 
 // Remote catalogue adapters for Islamic audio and public-domain audiobooks.
 class AudioLibraryRepository {
@@ -21,7 +23,9 @@ class AudioLibraryRepository {
             val providers = coroutineScope {
                 listOf(
                     async { searchLibriVox(query.trim()) },
-                    async { searchInternetArchive(query.trim()) }
+                    async { searchInternetArchive(query.trim()) },
+                    async { searchPodcastAudiobooks(query.trim(), loyalBooksOnly = true) },
+                    async { searchPodcastAudiobooks(query.trim(), loyalBooksOnly = false) }
                 ).awaitAll()
             }
             return@withContext providers.flatten().distinctBy { it.id }.take(100)
@@ -149,6 +153,85 @@ class AudioLibraryRepository {
             }.awaitAll().filterNotNull()
         }
     }
+
+    /**
+     * Loyal Books publishes one RSS podcast feed per audiobook. Apple's public
+     * podcast directory is used only for discovery; playback stays on the
+     * publisher's own RSS enclosure URL.
+     */
+    private suspend fun searchPodcastAudiobooks(query: String, loyalBooksOnly: Boolean): List<Track> {
+        val terms = if (query.isNotBlank()) listOf(query + " audiobook", query + " audio book")
+            else if (loyalBooksOnly) listOf("Loyal Books audiobook", "loyalbooks classic audiobook")
+            else listOf("public domain audiobook", "children stories audio", "audio drama stories")
+        val found = coroutineScope {
+            terms.map { term -> async {
+                val encoded = URLEncoder.encode(term, "UTF-8")
+                val url = "https://itunes.apple.com/search?media=podcast&entity=podcast&limit=25&term=" + encoded
+                val root = runCatching { getJson(url) as? JSONObject }.getOrNull() ?: JSONObject()
+                val results = root.optJSONArray("results") ?: JSONArray()
+                (0 until results.length()).mapNotNull { results.optJSONObject(it) }
+            } }.awaitAll().flatten()
+        }.distinctBy { it.optString("feedUrl") }.filter { item ->
+            val feed = item.optString("feedUrl").lowercase()
+            val title = item.optString("collectionName").lowercase()
+            val description = item.optString("artistName").lowercase() + " " + item.optString("primaryGenreName").lowercase()
+            if (loyalBooksOnly) feed.contains("loyalbooks.com")
+            else !feed.contains("loyalbooks.com") && (title.contains("audiobook") || title.contains("audio book") || title.contains("story") || title.contains("audio drama") || description.contains("audiobook"))
+        }.take(10)
+        return coroutineScope {
+            found.map { feed -> async {
+                val feedUrl = feed.optString("feedUrl")
+                val xml = runCatching { getText(feedUrl) }.getOrNull() ?: return@async emptyList<Track>()
+                parsePodcastFeed(xml, feed).take(30)
+            } }.awaitAll().flatten()
+        }
+    }
+
+    private fun parsePodcastFeed(xml: String, feed: JSONObject): List<Track> {
+        val parser = XmlPullParserFactory.newInstance().newPullParser()
+        parser.setInput(xml.reader())
+        val items = mutableListOf<Track>()
+        var event = parser.eventType
+        var inItem = false
+        var title = ""
+        var author = feed.optString("artistName", "Podcast publisher")
+        var enclosure = ""
+        var artwork = feed.optString("artworkUrl600").ifBlank { feed.optString("artworkUrl100") }
+        var description = ""
+        var language = ""
+        while (event != XmlPullParser.END_DOCUMENT && items.size < 30) {
+            when (event) {
+                XmlPullParser.START_TAG -> when (parser.name.lowercase()) {
+                    "item" -> { inItem = true; title = ""; enclosure = ""; description = "" }
+                    "title" -> if (inItem) title = parser.nextText().trim()
+                    "author", "itunes:author" -> if (inItem) author = parser.nextText().trim()
+                    "description", "summary", "itunes:summary" -> if (inItem) description = parser.nextText().take(300).trim()
+                    "enclosure" -> if (inItem) enclosure = parser.getAttributeValue(null, "url").orEmpty()
+                    "image" -> parser.getAttributeValue(null, "href")?.let { artwork = it }
+                    "language" -> if (!inItem) language = parser.nextText().trim()
+                }
+                XmlPullParser.END_TAG -> if (parser.name.equals("item", true)) {
+                    if (inItem && title.isNotBlank() && enclosure.startsWith("https://") &&
+                        (enclosure.contains(".mp3", true) || enclosure.contains(".m4a", true) || enclosure.contains(".m4b", true) || enclosure.contains(".aac", true))) {
+                        val source = if (feed.optString("feedUrl").contains("loyalbooks.com", true)) "Loyal Books" else "Podcast audiobook"
+                        items.add(Track(id = "rss:" + feed.optString("feedUrl") + ":" + enclosure, title = title, artist = author + " · " + source, artwork = artwork.takeIf { it.startsWith("https://") }, streamUrl = enclosure, isDownloadable = false, language = language.ifBlank { "Unspecified" }, contentType = if (source == "Loyal Books") "Audiobook" else "Audiobook / serialized audio", tradition = "General"))
+                    }
+                    inItem = false
+                }
+            }
+            event = parser.next()
+        }
+        return items
+    }
+
+    private fun getText(url: String): String {
+        val request = Request.Builder().url(url).header("Accept", "application/rss+xml, application/xml, text/xml").build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("Audio feed returned HTTP " + response.code)
+            return response.body?.string().orEmpty()
+        }
+    }
+
     private fun classifyTradition(item: JSONObject, detail: JSONObject?): String {
         // Sect placement is based only on explicit category/publisher metadata.
         // Titles and descriptive prose are deliberately excluded to avoid guessing.
