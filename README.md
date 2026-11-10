@@ -9,7 +9,7 @@ The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3
 ## Highlights
 
 - Native Compose interface with Light, Dark, and AMOLED themes.
-- Separate Discover tabs for Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, Islamic Podcasts, and Shia Sources.
+- Separate Discover tabs for Shia Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, and Shia Podcasts.
 - Shia-focused catalogue discovery across publisher websites, community platforms, and documented audio APIs.
 - External-only sources open their original provider; the app does not bypass access, DRM, or download restrictions.
 - Local audio import, favorites, bookmarks, and listening history.
@@ -24,21 +24,21 @@ The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3
 
 ### Discover audio
 
-Discover is organized into dedicated category tabs: Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, Islamic Podcasts, and Shia Sources.
+Discover is organized into nine focused category tabs: Shia Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, and Shia Podcasts. Category tabs appear in Discover only; Home no longer repeats the same horizontal tab strip.
 
 The catalogue layer supports several kinds of audio sources:
 
-- **Shia Audios** — Urdu/English books, Quran translations, and Tafseer catalogue.
-- **Wilayat Waves** — Urdu Shia audiobooks and episode listings.
-- **Rawda** — nohay, latmiyat, marsiya, Quran, duas, and lectures.
-- **Azadari Media** — nohay, marsiya, manqabat, and majlis audio.
-- **Shia Multimedia** — Quran audio and Tafseer resources.
+- **Shia Audiobooks:** Shia Audios, Wilayat Waves, Shia Readers, and Urdu Shia audio archives.
+
+- **Nohay, Marsiya, Manqabat, Majalis, and Duas:** Rawda, Azadari Media, Nauha Diary, ShiaRise Media, and other relevant Shia providers.
+
+- **Quran and Tafseer:** Al Furqan's live recitation API plus Shia Quran and Tafseer resources.
 - **Al Furqan Quran API** — live Quran catalogue with 114 surahs, individual ayah streams, and reciter selection. Each result is one ayah, not a falsely labelled complete surah.
-- **Shia Readers, ShiaViews, ShiaRise, Alwasi TV, Kashana-e-Baseerat, and Al Basheer** — community audio, lectures, and educational resources.
+- **Shia Podcasts and lectures:** Shia Readers, ShiaViews, ShiaRise, Alwasi TV, Kashana-e-Baseerat, and Al Basheer.
 - **IslamHouse** — Islamic audio and book/audio entries, with language and category filtering.
-- **LibriVox** — public-domain audiobook chapters.
-- **Internet Archive** — audio-book and open-audio catalogue entries that pass the app's public-domain or supported Creative Commons licence checks.
-- **Podcast audiobook feeds** — podcast discovery through the public podcast directory, including Loyal Books feeds; playback uses the publisher's RSS enclosure URL.
+
+
+
 
 The Quran tab uses Al Furqan's documented public API (`https://alfurqan.online/api/v1`): it loads surah and reciter metadata, then streams individual ayahs. Al-Husary is the default reciter when available; entering a reciter name or ID filters to that reciter. The API documents 44 reciters, 114 surahs, and individual ayah audio endpoints. Other provider results depend on each provider's API, catalogue, network availability, and stream URLs. A provider directory entry is a link to the original source, not a claim that its catalogue is playable in-app. External-only sources open the provider. The app does not bypass login, DRM, copyright, or download restrictions, and does not host these catalogues or audio files.
 
@@ -191,7 +191,7 @@ The `reference/` directory contains visual/reference material. It is not used as
 ## Current limitations and notes
 
 - Online catalogues and stream URLs are provided by third parties. Their uptime, content, metadata, and availability are outside this app's control.
-- Internet Archive results are filtered using licence/rights metadata, but users should still review the source's terms and the rights applicable to each item.
+
 - Lyrics are entered or pasted by the user as timed `.LRC` text; automatic lyric-provider lookup is not implemented.
 - Download support is provider- and track-dependent; the app does not provide a universal downloader for every stream.
 - Listening insights are local to this app installation and are not synchronised across devices.
