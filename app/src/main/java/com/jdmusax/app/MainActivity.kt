@@ -723,7 +723,20 @@ private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accen
             FilterChip(
                 selected = selected == category,
                 onClick = { onSelected(category) },
-                label = { Text(category) },
+                label = { Text(category, maxLines = 1) },
+                leadingIcon = {
+                    Icon(
+                        when (category) {
+                            "Urdu Audio", "English Audio", "Arabic Audio" -> Icons.Default.Language
+                            "Comparative Islamic Studies" -> Icons.Default.CompareArrows
+                            "Other Islamic Perspectives" -> Icons.Default.Public
+                            "General Audiobooks" -> Icons.Default.Headphones
+                            else -> Icons.Default.MenuBook
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = accent,
                     selectedLabelColor = Color.Black
