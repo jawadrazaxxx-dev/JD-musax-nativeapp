@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
@@ -55,6 +56,7 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 
+@OptIn(UnstableApi::class)
 class MainActivity : ComponentActivity() {
     private var controller: MediaController? = null
     private val repo = AudiusRepository()
