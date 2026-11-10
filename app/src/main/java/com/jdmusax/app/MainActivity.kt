@@ -566,7 +566,13 @@ private fun JDMusaxApp(
     var trendingLoaded by remember { mutableStateOf(false) }
     var featuredGeneration by remember { mutableIntStateOf(0) }
 
+    val context = androidx.compose.ui.platform.LocalContext.current
+
     fun play(track: Track, queue: List<Track>) {
+        if (!track.externalUrl.isNullOrBlank()) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
+            return
+        }
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
         playbackQueue = safeQueue
         playbackIndex = safeQueue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
@@ -804,7 +810,7 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
+private val musicCategories = listOf("Shia Sources", "All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
@@ -825,6 +831,7 @@ private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accen
                             "Comparative Islamic Studies" -> Icons.Default.CompareArrows
                             "Other Islamic Perspectives" -> Icons.Default.Public
                             "General Audiobooks" -> Icons.Default.Headphones
+                            "Shia Sources" -> Icons.Default.OpenInNew
                             else -> Icons.Default.MenuBook
                         },
                         contentDescription = null,
@@ -1269,7 +1276,7 @@ private fun TrackRow(
                 Icon(Icons.Default.Download, contentDescription = "Download", tint = accent)
             }
         }
-        Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
+        Icon(if (track.externalUrl != null) Icons.Default.OpenInNew else Icons.Default.PlayCircle, contentDescription = if (track.externalUrl != null) "Open source" else "Play", tint = accent, modifier = Modifier.size(28.dp))
     }
     }
 }
