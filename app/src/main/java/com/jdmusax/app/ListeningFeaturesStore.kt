@@ -26,7 +26,8 @@ class PlaylistStore(context: Context) {
                                 o.optString("artwork").ifBlank { null }, o.optLong("duration"),
                                 o.optString("streamUrl").ifBlank { null }, o.optString("localUri").ifBlank { null },
                                 o.optBoolean("downloadable"), o.optString("language"),
-                                o.optString("contentType", "Audiobook"), o.optString("tradition", "General")
+                                o.optString("contentType", "Audiobook"), o.optString("tradition", "General"),
+                                o.optString("externalUrl").ifBlank { null }
                             )
                         }
                     }
@@ -108,7 +109,7 @@ class PlaylistStore(context: Context) {
                     put("artwork", t.artwork ?: ""); put("duration", t.duration)
                     put("streamUrl", t.streamUrl ?: ""); put("localUri", t.localUri ?: "")
                     put("downloadable", t.isDownloadable); put("language", t.language)
-                    put("contentType", t.contentType); put("tradition", t.tradition)
+                    put("contentType", t.contentType); put("tradition", t.tradition); put("externalUrl", t.externalUrl ?: "")
                 })
             }
             array.put(JSONObject().apply {
