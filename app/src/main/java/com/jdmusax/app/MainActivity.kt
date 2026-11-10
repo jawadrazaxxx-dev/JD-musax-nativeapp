@@ -1014,10 +1014,21 @@ private fun TrackRow(
         Column(Modifier.weight(1f)) {
             Text(track.title, color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold)
             Text(
-                listOf(track.contentType, track.language.uppercase().takeIf { it.isNotBlank() }, track.artist)
-                    .filterNotNull().joinToString(" • "),
+                listOf(
+                    track.contentType,
+                    when (track.language.lowercase()) {
+                        "ur" -> "Urdu"
+                        "en" -> "English"
+                        "ar" -> "Arabic"
+                        else -> track.language.takeIf { it.isNotBlank() }
+                    },
+                    track.artist
+                ).filterNotNull().joinToString(" • "),
                 color = palette.muted, maxLines = 1, fontSize = 11.sp
             )
+            if (track.tradition != "General" && track.tradition != "Unclassified / General Islamic") {
+                Text(track.tradition, color = accent, maxLines = 1, fontSize = 10.sp)
+            }
         }
         IconButton(onClick = onToggleSave) {
             Icon(
