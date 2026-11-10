@@ -64,6 +64,11 @@ class MainActivity : ComponentActivity() {
     private var sessionIndex by mutableIntStateOf(-1)
     private var sessionShuffleEnabled by mutableStateOf(false)
     private var sessionRepeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
+    private val audioEffects = AudioEffectsController()
+    private var audioBands by mutableStateOf(emptyList<AudioBand>())
+    private var audioPresets by mutableStateOf(emptyList<String>())
+    private var visualizerLevels by mutableStateOf(emptyList<Float>())
+    private var visualizerEnabled by mutableStateOf(false)
 
     private fun syncPlaybackSnapshot(player: Player) {
         sessionTracks = (0 until player.mediaItemCount).map { index ->
@@ -87,6 +92,14 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        val visualizerPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                visualizerEnabled = audioEffects.setVisualizerEnabled(true) { levels -> visualizerLevels = levels }
+            } else {
+                visualizerEnabled = false
+            }
+        }
 
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
@@ -112,6 +125,14 @@ class MainActivity : ComponentActivity() {
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         playing = isPlaying
+                    }
+
+                    override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                        audioBands = audioEffects.attach(audioSessionId)
+                        audioPresets = audioEffects.presetNames()
+                        if (visualizerEnabled) {
+                            visualizerEnabled = audioEffects.setVisualizerEnabled(true) { levels -> visualizerLevels = levels }
+                        }
                     }
 
                     override fun onEvents(player: Player, events: Player.Events) {
@@ -145,12 +166,27 @@ class MainActivity : ComponentActivity() {
                 sessionIndex = sessionIndex,
                 sessionShuffleEnabled = sessionShuffleEnabled,
                 sessionRepeatMode = sessionRepeatMode,
+                audioBands = audioBands,
+                audioPresets = audioPresets,
+                visualizerLevels = visualizerLevels,
+                visualizerEnabled = visualizerEnabled,
                 onSpeedChange = { speed -> controller?.setPlaybackSpeed(speed) },
                 onCurrentPosition = { controller?.currentPosition ?: 0L },
                 onCurrentDuration = { controller?.duration?.takeIf { it > 0L } ?: 0L },
                 onSeekTo = { position -> controller?.seekTo(position) },
                 onShuffleChange = { enabled -> controller?.shuffleModeEnabled = enabled },
                 onRepeatModeChange = { mode -> controller?.repeatMode = mode },
+                onBandLevelChange = { index, level -> audioBands = audioEffects.setBandLevel(index, level) },
+                onPresetChange = { index -> audioBands = audioEffects.usePreset(index) },
+                onVisualizerToggle = { enabled ->
+                    if (!enabled) {
+                        visualizerEnabled = audioEffects.setVisualizerEnabled(false) { levels -> visualizerLevels = levels }
+                    } else if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        visualizerEnabled = audioEffects.setVisualizerEnabled(true) { levels -> visualizerLevels = levels }
+                    } else {
+                        visualizerPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                },
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
@@ -188,6 +224,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        audioEffects.release()
         controller?.release()
         super.onDestroy()
     }
@@ -335,7 +372,8 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     EXPLORE("Explore", Icons.Default.Explore),
     LIBRARY("Library", Icons.Default.LibraryMusic),
-    SETTINGS("Settings", Icons.Default.Settings)
+    SETTINGS("Settings", Icons.Default.Settings),
+    PLAYER("Player", Icons.Default.GraphicEq)
 }
 
 @Composable
@@ -348,6 +386,10 @@ private fun JDMusaxApp(
     sessionIndex: Int,
     sessionShuffleEnabled: Boolean,
     sessionRepeatMode: Int,
+    audioBands: List<AudioBand>,
+    audioPresets: List<String>,
+    visualizerLevels: List<Float>,
+    visualizerEnabled: Boolean,
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -358,7 +400,10 @@ private fun JDMusaxApp(
     onCurrentDuration: () -> Long,
     onSeekTo: (Long) -> Unit,
     onShuffleChange: (Boolean) -> Unit,
-    onRepeatModeChange: (Int) -> Unit
+    onRepeatModeChange: (Int) -> Unit,
+    onBandLevelChange: (Int, Int) -> Unit,
+    onPresetChange: (Int) -> Unit,
+    onVisualizerToggle: (Boolean) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -392,7 +437,6 @@ private fun JDMusaxApp(
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
     var playbackQueue by remember { mutableStateOf(emptyList<Track>()) }
     var playbackIndex by remember { mutableIntStateOf(-1) }
-    var showNowPlaying by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -418,7 +462,6 @@ private fun JDMusaxApp(
             playbackQueue = emptyList()
             playbackIndex = -1
             nowPlaying = null
-            showNowPlaying = false
         }
     }
 
@@ -531,7 +574,7 @@ private fun JDMusaxApp(
         if (tab == AppTab.EXPLORE && !trendingLoaded && !trendingLoading) loadTrending()
     }
 
-    BackHandler(enabled = showNowPlaying) { showNowPlaying = false }
+    BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
 
     MaterialTheme(
         colorScheme = if (appearanceMode == "light") {
@@ -544,15 +587,7 @@ private fun JDMusaxApp(
         Scaffold(
             containerColor = palette.background,
             bottomBar = {
-                if (!showNowPlaying) Column {
-                    MiniPlayer(
-                        nowPlaying, isPlaying, accent,
-                        onPrevious = onPrevious,
-                        onToggle = onToggle,
-                        onNext = onNext,
-                        onOpen = { showNowPlaying = true }
-                    )
-                    NavigationBar(containerColor = palette.surface) {
+                NavigationBar(containerColor = palette.surface) {
                         AppTab.values().forEach { t ->
                             NavigationBarItem(
                                 selected = tab == t,
@@ -573,11 +608,11 @@ private fun JDMusaxApp(
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                if (showNowPlaying && nowPlaying != null) {
+                if (tab == AppTab.PLAYER && nowPlaying != null) {
                     NowPlayingScreen(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
                         isPlaying = isPlaying, palette = palette, accent = accent, speed = playbackSpeed,
-                        sleepMinutes = sleepMinutes, onClose = { showNowPlaying = false }, onToggle = onToggle,
+                        sleepMinutes = sleepMinutes, onClose = { tab = AppTab.HOME }, onToggle = onToggle,
                         onPrevious = onPrevious,
                         onNext = onNext,
                         onSelectTrack = { skipTo(it) },
@@ -651,7 +686,19 @@ private fun JDMusaxApp(
                         onAppearanceModeChange = { mode ->
                             appearanceMode = mode
                             settings.setAppearanceMode(mode)
-                        }
+                        },
+                        audioBands = audioBands,
+                        audioPresets = audioPresets,
+                        onBandLevelChange = onBandLevelChange,
+                        onPresetChange = onPresetChange,
+                        visualizerEnabled = visualizerEnabled,
+                        visualizerLevels = visualizerLevels,
+                        onVisualizerToggle = onVisualizerToggle
+                    )
+                    AppTab.PLAYER -> Text(
+                        "Play a track to open the full player here.",
+                        color = palette.muted,
+                        modifier = Modifier.padding(24.dp)
                     )
                 }
             }
@@ -960,59 +1007,6 @@ private fun TrackRow(
         }
         Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
     }
-    }
-}
-
-@Composable
-private fun MiniPlayer(
-    track: Track?,
-    isPlaying: Boolean,
-    accent: Color,
-    onPrevious: () -> Unit,
-    onToggle: () -> Unit,
-    onNext: () -> Unit,
-    onOpen: () -> Unit
- ) {
-    val palette = LocalAppPalette.current
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clickable(onClick = onOpen),
-        shape = RoundedCornerShape(22.dp),
-        color = palette.surfaceVariant
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            IconButton(onClick = onPrevious, enabled = track != null) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
-            }
-            Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(palette.surface),
-                contentAlignment = Alignment.Center
-            ) {
-                if (track?.artwork != null) {
-                    AsyncImage(model = track.artwork, contentDescription = "Album artwork", modifier = Modifier.fillMaxSize())
-                } else {
-                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
-                }
-            }
-            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(track?.title ?: "Nothing playing", color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Text(track?.artist ?: "Choose a track to start", color = palette.muted, maxLines = 1, fontSize = 11.sp)
-            }
-            IconButton(onClick = onToggle, enabled = track != null) {
-                Icon(
-                    if (isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = if (track != null) accent else Color.DarkGray,
-                    modifier = Modifier.size(38.dp)
-                )
-            }
-            IconButton(onClick = onNext, enabled = track != null) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
-            }
-        }
     }
 }
 
