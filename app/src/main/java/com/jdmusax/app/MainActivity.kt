@@ -229,13 +229,13 @@ class MainActivity : ComponentActivity() {
                 onDownload = { track ->
                     val url = track.streamUrl
                     if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
-                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "JD-musax-audio" }
+                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "SHIAudio-audio" }
                         val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
                         val request = DownloadManager.Request(Uri.parse(url))
                             .setTitle(track.title)
                             .setDescription("Downloading audio for offline listening")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.$extension")
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "SHIAudio/$safeName.$extension")
                         val downloadId = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                         OfflineAudioStore(applicationContext).remember(track, downloadId)
                     }
