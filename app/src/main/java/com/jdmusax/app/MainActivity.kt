@@ -551,11 +551,12 @@ private fun JDMusaxApp(
     }
 
     fun runSearch(category: String = selectedCategory) {
-        if (query.isBlank()) return
         scope.launch {
             searching = true
             searchError = null
-            runCatching { repo.search(query, category) }
+            runCatching {
+                if (query.isBlank()) repo.featured(category) else repo.search(query, category)
+            }
                 .onSuccess { results = it }
                 .onFailure { searchError = it.message ?: "Search failed" }
             searching = false
