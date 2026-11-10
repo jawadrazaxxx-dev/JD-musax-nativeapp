@@ -739,6 +739,9 @@ private fun JDMusaxApp(
                         playlists = playlists,
                         onCreatePlaylist = { name -> playlists = playlistStore.create(name, saved.toList()) },
                         onDeletePlaylist = { id -> playlists = playlistStore.delete(id) },
+                        onRenamePlaylist = { id, name -> playlists = playlistStore.rename(id, name) },
+                        onReorderPlaylist = { from, to -> playlists = playlistStore.reorder(from, to) },
+                        onAddFavoritesToPlaylist = { id -> playlists = playlistStore.addTracks(id, saved.toList()) },
                         accent = accent,
                         savedIds = savedIds,
                         onPlay = { track, queue -> play(track, queue) },
@@ -998,6 +1001,9 @@ private fun LibraryScreen(
     playlists: List<AudioPlaylist>,
     onCreatePlaylist: (String) -> Unit,
     onDeletePlaylist: (String) -> Unit,
+    onRenamePlaylist: (String, String) -> Unit,
+    onReorderPlaylist: (Int, Int) -> Unit,
+    onAddFavoritesToPlaylist: (String) -> Unit,
     accent: Color,
     savedIds: Set<String>,
     onPlay: (Track, List<Track>) -> Unit,
@@ -1020,7 +1026,10 @@ private fun LibraryScreen(
     var selectedCollection by remember { mutableStateOf("Favorites") }
     var showCreatePlaylist by remember { mutableStateOf(false) }
     var playlistName by remember { mutableStateOf("") }
+    var showRenamePlaylist by remember { mutableStateOf(false) }
+    var renamedPlaylist by remember { mutableStateOf("") }
     val activePlaylist = playlists.firstOrNull { selectedCollection == it.id }
+    val activePlaylistIndex = playlists.indexOfFirst { it.id == selectedCollection }
     val visibleTracks = when (selectedCollection) {
         "Bookmarks" -> bookmarkTracks
         "Recently played" -> recentTracks
@@ -1056,9 +1065,22 @@ private fun LibraryScreen(
         }
         if (activePlaylist != null) {
             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                Text("${activePlaylist.tracks.size} tracks in ${activePlaylist.name}", color = palette.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
-                TextButton(onClick = { onDeletePlaylist(activePlaylist.id); selectedCollection = "Favorites" }) { Text("Delete playlist", color = accent) }
+                Text("${activePlaylist.tracks.size} tracks · ${activePlaylist.name}", color = palette.muted, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { onAddFavoritesToPlaylist(activePlaylist.id) }) { Text("Add favorites", color = accent) }
+                IconButton(onClick = { renamedPlaylist = activePlaylist.name; showRenamePlaylist = true }) { Icon(Icons.Default.Edit, "Rename playlist", tint = accent) }
+                IconButton(onClick = { onReorderPlaylist(activePlaylistIndex, activePlaylistIndex - 1) }, enabled = activePlaylistIndex > 0) { Icon(Icons.Default.KeyboardArrowUp, "Move playlist up") }
+                IconButton(onClick = { onReorderPlaylist(activePlaylistIndex, activePlaylistIndex + 1) }, enabled = activePlaylistIndex in 0 until playlists.lastIndex) { Icon(Icons.Default.KeyboardArrowDown, "Move playlist down") }
+                TextButton(onClick = { onDeletePlaylist(activePlaylist.id); selectedCollection = "Favorites" }) { Text("Delete", color = accent) }
             }
+        }
+        if (showRenamePlaylist && activePlaylist != null) {
+            AlertDialog(
+                onDismissRequest = { showRenamePlaylist = false },
+                title = { Text("Rename playlist") },
+                text = { OutlinedTextField(value = renamedPlaylist, onValueChange = { renamedPlaylist = it.take(48) }, singleLine = true, label = { Text("Playlist name") }) },
+                confirmButton = { TextButton(onClick = { onRenamePlaylist(activePlaylist.id, renamedPlaylist); showRenamePlaylist = false }) { Text("Save") } },
+                dismissButton = { TextButton(onClick = { showRenamePlaylist = false }) { Text("Cancel") } }
+            )
         }
         if (showCreatePlaylist) {
             AlertDialog(
