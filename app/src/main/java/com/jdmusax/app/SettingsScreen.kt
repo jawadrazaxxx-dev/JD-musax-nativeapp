@@ -71,7 +71,14 @@ fun SettingsScreen(
     onAccentChange: (String) -> Unit,
     onDynamicThemeChange: (Boolean) -> Unit,
     appearanceMode: String,
-    onAppearanceModeChange: (String) -> Unit
+    onAppearanceModeChange: (String) -> Unit,
+    audioBands: List<AudioBand>,
+    audioPresets: List<String>,
+    onBandLevelChange: (Int, Int) -> Unit,
+    onPresetChange: (Int) -> Unit,
+    visualizerEnabled: Boolean,
+    visualizerLevels: List<Float>,
+    onVisualizerToggle: (Boolean) -> Unit
 ) {
     val palette = LocalAppPalette.current
     Column(
@@ -158,9 +165,61 @@ fun SettingsScreen(
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text("Audio tools", color = palette.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                 Text("Equalizer", color = palette.text, fontWeight = FontWeight.SemiBold)
-                Text("Not connected yet — native Android audio-session integration is still required.", color = palette.muted, fontSize = 12.sp)
-                Text("Visualizer", color = palette.text, fontWeight = FontWeight.SemiBold)
-                Text("Not connected yet — no inactive or simulated audio controls are shown.", color = palette.muted, fontSize = 12.sp)
+                if (audioBands.isEmpty()) {
+                    Text("Start a track to connect the equalizer to its audio session.", color = palette.muted, fontSize = 12.sp)
+                } else {
+                    Text("Presets", color = palette.muted, fontSize = 12.sp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        listOf("Flat", "Bass", "Treble", "Vocal").forEachIndexed { index, label ->
+                            FilterChip(
+                                selected = false,
+                                onClick = { onPresetChange(index) },
+                                label = { Text(label, fontSize = 11.sp) },
+                                enabled = index < audioPresets.size
+                            )
+                        }
+                    }
+                    audioBands.forEach { band ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(band.label, color = palette.text, fontSize = 12.sp)
+                                Spacer(Modifier.weight(1f))
+                                Text("%+.1f dB".format(band.levelMb / 100f), color = palette.muted, fontSize = 11.sp)
+                            }
+                            androidx.compose.material3.Slider(
+                                value = band.levelMb / 100f,
+                                onValueChange = { onBandLevelChange(band.index, (it * 100).toInt()) },
+                                valueRange = (band.minLevelMb / 100f)..(band.maxLevelMb / 100f)
+                            )
+                        }
+                    }
+                }
+                androidx.compose.material3.HorizontalDivider(color = palette.border)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text("Visualizer", color = palette.text, fontWeight = FontWeight.SemiBold)
+                        Text("Live frequency response from the playing track", color = palette.muted, fontSize = 12.sp)
+                    }
+                    Switch(checked = visualizerEnabled, onCheckedChange = onVisualizerToggle)
+                }
+                if (visualizerEnabled && visualizerLevels.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(92.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly,
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        visualizerLevels.take(48).forEach { level ->
+                            androidx.compose.foundation.layout.Box(
+                                Modifier.width(4.dp)
+                                    .height((8f + level.coerceIn(0f, 1f) * 76f).dp)
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(accent)
+                            )
+                        }
+                    }
+                } else if (visualizerEnabled) {
+                    Text("Waiting for audio data…", color = palette.muted, fontSize = 12.sp)
+                }
             }
         }
 
