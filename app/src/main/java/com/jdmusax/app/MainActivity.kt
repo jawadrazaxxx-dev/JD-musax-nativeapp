@@ -751,13 +751,13 @@ private fun HomeScreen(
  ) {
     val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("JD musax", "MUSIC, WITHOUT THE NOISE.")
+        ScreenHeader("JD musax", "AUDIOBOOKS • ISLAMIC AUDIO • YOUR LIBRARY")
         CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search tracks on legacy music provider") },
+            placeholder = { Text("Search books, lectures, authors…") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onSearch) {
@@ -780,8 +780,8 @@ private fun HomeScreen(
                 loading = loading,
                 error = error,
                 tracks = tracks,
-                emptyTitle = "Find your next repeat.",
-                emptySubtitle = "Search Audius to discover independent music.",
+                emptyTitle = "Find something meaningful to hear.",
+                emptySubtitle = "Search audiobooks, Islamic lectures, and authors.",
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
@@ -809,7 +809,7 @@ private fun ExploreScreen(
     val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { ScreenHeader("Explore", "TRENDING ON AUDIUS") }
+            Column(Modifier.weight(1f)) { ScreenHeader("Discover", "FEATURED AUDIO LIBRARIES") }
             IconButton(onClick = onRefresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = accent)
             }
@@ -820,8 +820,8 @@ private fun ExploreScreen(
                 loading = loading,
                 error = error,
                 tracks = tracks,
-                emptyTitle = "Nothing trending yet",
-                emptySubtitle = "Tap refresh to try again.",
+                emptyTitle = "No featured audio yet",
+                emptySubtitle = "Refresh to check the selected library again.",
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
@@ -864,7 +864,7 @@ private fun LibraryScreen(
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR FAVORITES & MUSIC") }
+            Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR SAVED AUDIO & LISTENING HISTORY") }
             FilledTonalButton(onClick = { picker.launch(arrayOf("audio/*")) }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
@@ -895,10 +895,11 @@ private fun LibraryScreen(
 
 @Composable
 private fun ScreenHeader(title: String, subtitle: String) {
+    val palette = LocalAppPalette.current
     Column {
-        Spacer(Modifier.height(22.dp))
-        Text(title, fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White)
-        Text(subtitle, color = Color.Gray, fontSize = 10.sp, letterSpacing = 2.sp)
+        Spacer(Modifier.height(18.dp))
+        Text(title, fontSize = 29.sp, fontWeight = FontWeight.Bold, color = palette.text)
+        Text(subtitle, color = palette.muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(18.dp))
     }
 }
@@ -944,14 +945,17 @@ private fun TrackContent(
 
 @Composable
 private fun EmptyState(title: String, subtitle: String) {
+    val palette = LocalAppPalette.current
     Column(
         Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Icon(Icons.Default.Headphones, contentDescription = null, tint = palette.muted, modifier = Modifier.size(38.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(title, color = palette.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text(subtitle, color = Color.Gray)
+        Text(subtitle, color = palette.muted)
     }
 }
 
@@ -974,18 +978,33 @@ private fun TrackRow(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = track.artwork,
-            contentDescription = null,
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(palette.surfaceVariant)
-        )
+        Box(
+            Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(palette.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!track.artwork.isNullOrBlank()) {
+                AsyncImage(
+                    model = track.artwork,
+                    contentDescription = "${track.contentType} cover",
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    if (track.contentType.contains("lecture", true)) Icons.Default.Headphones else Icons.Default.MenuBook,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(track.title, color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold)
-            Text(track.artist, color = palette.muted, maxLines = 1, fontSize = 12.sp)
+            Text(
+                listOf(track.contentType, track.language.uppercase().takeIf { it.isNotBlank() }, track.artist)
+                    .filterNotNull().joinToString(" • "),
+                color = palette.muted, maxLines = 1, fontSize = 11.sp
+            )
         }
         IconButton(onClick = onToggleSave) {
             Icon(
