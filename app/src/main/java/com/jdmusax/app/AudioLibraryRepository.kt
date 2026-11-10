@@ -19,6 +19,7 @@ class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
+        if (section == "Shia Sources") return@withContext shiaSourceDirectory(query)
         if (section == "General Audiobooks") {
             val providers = coroutineScope {
                 listOf(
@@ -39,6 +40,31 @@ class AudioLibraryRepository {
     }
 
     suspend fun featured(section: String): List<Track> = search("", section)
+
+    private fun shiaSourceDirectory(query: String): List<Track> {
+        val sources = listOf(
+            Triple("Shia Audios", "Urdu and English audiobook catalogue · 39 listed items", "https://shiaaudios.com/audios"),
+            Triple("Wilayat Waves", "Urdu Shia audiobooks with chapter and episode listings", "https://wilayatwaves.com/audiobook/"),
+            Triple("Shia Readers · SoundCloud", "Volunteer-produced Shia audiobook recordings", "https://soundcloud.com/shiareaders"),
+            Triple("Shia Readers · YouTube", "Audiobook chapters, lectures and book series", "https://www.youtube.com/@ShiaReaders"),
+            Triple("Internet Archive · Urdu Shia books", "Search archive records; availability and rights vary by item", "https://archive.org/search?query=urdu+shia+audio"),
+            Triple("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/"),
+            Triple("ShiaTube · Shia Readers", "Community audiobook recordings and chapter listings", "https://shiatube.org/@ShiaReaders")
+        )
+        return sources.filter { query.isBlank() || (it.first + " " + it.second).contains(query, ignoreCase = true) }
+            .map { (name, description, url) ->
+                Track(
+                    id = "source:" + name.lowercase().replace(Regex("[^a-z0-9]+"), "-"),
+                    title = name,
+                    artist = description,
+                    contentType = "External audio source",
+                    language = "Urdu / English",
+                    tradition = "Shia Library",
+                    externalUrl = url,
+                    isDownloadable = false
+                )
+            }
+    }
 
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
         val types = listOf("audios", "books")
