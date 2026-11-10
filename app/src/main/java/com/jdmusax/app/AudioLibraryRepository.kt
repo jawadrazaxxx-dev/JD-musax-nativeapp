@@ -19,7 +19,7 @@ class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
-        if (section == "Shia Sources") return@withContext shiaSourceDirectory(query)
+        if (section in AUDIO_SOURCE_CATEGORIES) return@withContext sourceDirectory(query, section)
         if (section == "General Audiobooks") {
             val providers = coroutineScope {
                 listOf(
@@ -41,29 +41,37 @@ class AudioLibraryRepository {
 
     suspend fun featured(section: String): List<Track> = search("", section)
 
-    private fun shiaSourceDirectory(query: String): List<Track> {
+    private data class AudioSource(val name: String, val description: String, val url: String, val categories: Set<String>, val language: String = "Urdu / English")
+
+    private fun sourceDirectory(query: String, section: String): List<Track> {
         val sources = listOf(
-            Triple("Shia Audios", "Urdu and English audiobook catalogue · 39 listed items", "https://shiaaudios.com/audios"),
-            Triple("Wilayat Waves", "Urdu Shia audiobooks with chapter and episode listings", "https://wilayatwaves.com/audiobook/"),
-            Triple("Shia Readers · SoundCloud", "Volunteer-produced Shia audiobook recordings", "https://soundcloud.com/shiareaders"),
-            Triple("Shia Readers · YouTube", "Audiobook chapters, lectures and book series", "https://www.youtube.com/@ShiaReaders"),
-            Triple("Internet Archive · Urdu Shia books", "Search archive records; availability and rights vary by item", "https://archive.org/search?query=urdu+shia+audio"),
-            Triple("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/"),
-            Triple("ShiaTube · Shia Readers", "Community audiobook recordings and chapter listings", "https://shiatube.org/@ShiaReaders")
+            AudioSource("Shia Audios", "Urdu and English Shia audiobook catalogue", "https://www.shiaaudios.com/audios", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures")),
+            AudioSource("Wilayat Waves", "AI-narrated Urdu Shia audiobooks and episodes", "https://wilayatwaves.com/", setOf("Shia Sources", "Audiobooks")),
+            AudioSource("Shia Readers · SoundCloud", "Community audiobook recordings and book excerpts", "https://soundcloud.com/shiareaders", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures", "Islamic Podcasts")),
+            AudioSource("Shia Readers · YouTube", "Audiobooks, lectures and religious audio series", "https://www.youtube.com/@ShiaReaders", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures")),
+            AudioSource("Internet Archive · Urdu Shia audio", "Searchable archive; item rights and playback vary", "https://archive.org/search?query=urdu+shia+audio", setOf("Shia Sources", "Audiobooks", "Majlis & Lectures")),
+            AudioSource("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/", setOf("Shia Sources", "Audiobooks", "Quran & Recitation", "Majlis & Lectures")),
+            AudioSource("Rawda", "Shia latmiyat, nohay, Quran, duas, anasheed and lectures", "https://rawda.app/", setOf("Shia Sources", "Nohay & Marsiya", "Quran & Recitation", "Majlis & Lectures")),
+            AudioSource("Azadari Media", "Nohay, manqabat, marsiya and full majlis audio with lyrics", "https://azadari.media/", setOf("Shia Sources", "Nohay & Marsiya", "Majlis & Lectures")),
+            AudioSource("Nauha Diary · Azadari Media", "Nauha lyrics and reciter/album discovery", "https://nauhadiary.com/azadari-media", setOf("Shia Sources", "Nohay & Marsiya")),
+            AudioSource("ShiaViews", "Shia Quran, majalis, lectures and Islamic lessons", "https://www.shiaviews.com/", setOf("Shia Sources", "Quran & Recitation", "Majlis & Lectures")),
+            AudioSource("ShiaRise Media", "Podcasts, Quran recitations, duas and latmiyat", "https://shiarise.org/media-explore/", setOf("Shia Sources", "Nohay & Marsiya", "Quran & Recitation", "Islamic Podcasts")),
+            AudioSource("Alwasi TV", "Shia lectures, Quranic commentary and podcasts", "https://alwasi.tv/", setOf("Shia Sources", "Quran & Recitation", "Majlis & Lectures", "Islamic Podcasts")),
+            AudioSource("Al Furqan Quran Audio API", "Quran recitations and reciter catalogue; API terms apply", "https://alfurqan.online/docs", setOf("Quran & Recitation"), "Arabic"),
+            AudioSource("Quran Foundation Developer API", "Official Quran audio and recitation metadata API; credentials and terms apply", "https://api-docs.quran.foundation/docs/api-reference/", setOf("Quran & Recitation"), "Arabic"),
+            AudioSource("MP3 Quran", "Quran reciters and surah audio catalogue", "https://mp3quran.net/", setOf("Quran & Recitation"), "Arabic"),
+            AudioSource("Al Basheer", "Shia community khutbah, lectures, Quran and podcast media", "https://albasheeraz.org/", setOf("Majlis & Lectures", "Islamic Podcasts", "Quran & Recitation"))
         )
-        return sources.filter { query.isBlank() || (it.first + " " + it.second).contains(query, ignoreCase = true) }
-            .map { (name, description, url) ->
-                Track(
-                    id = "source:" + name.lowercase().replace(Regex("[^a-z0-9]+"), "-"),
-                    title = name,
-                    artist = description,
-                    contentType = "External audio source",
-                    language = "Urdu / English",
-                    tradition = "Shia Library",
-                    externalUrl = url,
-                    isDownloadable = false
-                )
-            }
+        return sources.filter { source ->
+            (section == "All Audio Sources" || section in source.categories) &&
+                (query.isBlank() || (source.name + " " + source.description).contains(query, ignoreCase = true))
+        }.distinctBy { it.url }.map { source ->
+            Track(id = "source:" + source.name.lowercase().replace(Regex("[^a-z0-9]+"), "-"), title = source.name, artist = source.description, contentType = "External audio source", language = source.language, tradition = if ("Shia Sources" in source.categories) "Shia Library" else "Audio Library", externalUrl = source.url, isDownloadable = false)
+        }
+    }
+
+    companion object {
+        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Sources", "All Audio Sources", "Audiobooks", "Nohay & Marsiya", "Quran & Recitation", "Majlis & Lectures", "Islamic Podcasts")
     }
 
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
