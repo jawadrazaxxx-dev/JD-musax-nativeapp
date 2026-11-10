@@ -1,6 +1,6 @@
-# JD musax
+# SHIAudio
 
-**JD musax** is a native Android audio player for music, Islamic audio, lectures, and audiobooks. It combines online audio discovery with a personal local library, a full playback queue, saved listening positions, custom playlists, listening insights, and offline downloads.
+**SHIAudio** is a Shia-focused Islamic audio discovery and listening app. Its separate collections organize audiobooks, nohay, marsiya, Quran recitation, Tafseer, majalis, duas and ziyarat, manqabat, and Islamic podcasts. It combines native Android playback with a personal library, bookmarks, listening history, playlists, and supported offline downloads.
 
 The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3 (ExoPlayer)**. Its screens and player are native Android UI—there is no HTML or WebView-based app interface.
 
@@ -9,7 +9,9 @@ The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3
 ## Highlights
 
 - Native Compose interface with Light, Dark, and AMOLED themes.
-- Online audio discovery across Islamic audio and general audiobook catalogues.
+- Separate Discover tabs for Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, Islamic Podcasts, and Shia Sources.
+- Shia-focused catalogue discovery across publisher websites, community platforms, and documented audio APIs.
+- External-only sources open their original provider; the app does not bypass access, DRM, or download restrictions.
 - Local audio import, favorites, bookmarks, and listening history.
 - Background playback, media notifications, and a persistent playback queue.
 - Custom playlists and queue editing.
@@ -22,14 +24,23 @@ The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3
 
 ### Discover audio
 
+Discover is organized into dedicated category tabs: Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, Islamic Podcasts, and Shia Sources.
+
 The catalogue layer supports several kinds of audio sources:
 
+- **Shia Audios** — Urdu/English books, Quran translations, and Tafseer catalogue.
+- **Wilayat Waves** — Urdu Shia audiobooks and episode listings.
+- **Rawda** — nohay, latmiyat, marsiya, Quran, duas, and lectures.
+- **Azadari Media** — nohay, marsiya, manqabat, and majlis audio.
+- **Shia Multimedia** — Quran audio and Tafseer resources.
+- **Quran Foundation, Al Furqan, and MP3 Quran** — Quran recitation discovery and metadata.
+- **Shia Readers, ShiaViews, ShiaRise, Alwasi TV, Kashana-e-Baseerat, and Al Basheer** — community audio, lectures, and educational resources.
 - **IslamHouse** — Islamic audio and book/audio entries, with language and category filtering.
 - **LibriVox** — public-domain audiobook chapters.
 - **Internet Archive** — audio-book and open-audio catalogue entries that pass the app's public-domain or supported Creative Commons licence checks.
 - **Podcast audiobook feeds** — podcast discovery through the public podcast directory, including Loyal Books feeds; playback uses the publisher's RSS enclosure URL.
 
-Available results depend on each provider's API, catalogue, network availability, and stream URLs. The app does not host these catalogues or audio files.
+Available results depend on each provider's API, catalogue, network availability, and stream URLs. A provider directory entry is a link to the original source, not a claim that its catalogue is playable in-app. External-only sources open the provider. The app does not bypass login, DRM, copyright, or download restrictions, and does not host these catalogues or audio files.
 
 ### Personal library
 
@@ -74,7 +85,7 @@ Listening totals are recorded while a track is actively playing. Historical tota
 - View completed downloads in the dedicated Offline library section.
 - Play a completed download from the app or remove it from the download list.
 
-Downloads are only offered for catalogue entries marked as downloadable with a supported HTTPS audio URL. Not every podcast or provider item can be downloaded from JD musax. Availability and storage location are managed by Android's DownloadManager.
+Downloads are only offered for catalogue entries marked as downloadable with a supported HTTPS audio URL. Not every podcast or provider item can be downloaded from SHIAudio. Availability and storage location are managed by Android's DownloadManager.
 
 ### Audio tools and appearance
 
@@ -119,8 +130,8 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 1. Clone the repository:
 
    ```bash
-   git clone https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp.git
-   cd JD-musax-nativeapp
+   git clone https://github.com/jawadrazaxxx-dev/SHIAudio-nativeapp.git
+   cd SHIAudio-nativeapp
    ```
 
 2. Make sure JDK 21 and the Android SDK required by the project are installed.
@@ -140,12 +151,12 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 
 ### Build with GitHub Actions
 
-The repository includes **Android CI** and **Build JD musax APK** workflows.
+The repository includes **Android CI** and **Build SHIAudio APK** workflows.
 
-1. Open the repository's [Actions page](https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp/actions).
+1. Open the repository's [Actions page](https://github.com/jawadrazaxxx-dev/SHIAudio-nativeapp/actions).
 2. Open a completed run for the relevant workflow.
 3. Confirm that the build job succeeded.
-4. Download the `JD-musax-debug-apk` artifact and extract the APK.
+4. Download the `SHIAudio-debug-apk` artifact and extract the APK.
 
 The workflow artifact is a **debug build**, not a signed production release. Release signing, store listing, and Play Store distribution are separate tasks. GitHub Actions artifacts may expire according to the workflow's retention settings.
 
