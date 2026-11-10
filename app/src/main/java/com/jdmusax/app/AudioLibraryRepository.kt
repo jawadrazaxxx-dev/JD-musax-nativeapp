@@ -19,8 +19,9 @@ class AudioLibraryRepository {
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
+        if (section == "Quran") return@withContext searchAlFurqanQuran(query)
         if (section in AUDIO_SOURCE_CATEGORIES) return@withContext sourceDirectory(query, section)
-        if (section == "General Audiobooks") {
+        if (section == "General Audiobooks" || section == "Audiobooks") {
             val providers = coroutineScope {
                 listOf(
                     async { searchLibriVox(query.trim()) },
@@ -72,10 +73,55 @@ class AudioLibraryRepository {
     }
 
     companion object {
-        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Sources", "Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Islamic Podcasts")
+        // Only this tab is intentionally a provider directory. Quran has a live catalogue adapter below.
+        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Sources", "Nohay", "Marsiya", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Islamic Podcasts")
         private const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
+        private const val AL_FURQAN_BASE = "https://alfurqan.online/api/v1"
     }
 
+    /**
+     * Live Quran catalogue backed by Al Furqan's public API.
+     * Each result is an individual ayah stream, not a falsely labelled full-surah file.
+     */
+    private suspend fun searchAlFurqanQuran(query: String): List<Track> {
+        val surahRoot = getJson("$AL_FURQAN_BASE/surahs") as? JSONObject ?: return emptyList()
+        val surahs = surahRoot.optJSONArray("surahs") ?: JSONArray()
+        val reciterRoot = getJson("$AL_FURQAN_BASE/reciters") as? JSONObject ?: JSONObject()
+        val reciters = reciterRoot.optJSONArray("reciters") ?: JSONArray()
+        val normalized = query.trim().lowercase()
+        val availableReciters = (0 until reciters.length()).mapNotNull { reciters.optJSONObject(it) }
+        val selectedReciter = availableReciters.firstOrNull { reciter ->
+            normalized.isNotBlank() && (reciter.optString("name").contains(normalized, true) ||
+                reciter.optString("arabicName").contains(normalized, true) || reciter.optString("id").contains(normalized, true))
+        } ?: availableReciters.firstOrNull { it.optString("id") == "husary" } ?: availableReciters.firstOrNull()
+        val reciterId = selectedReciter?.optString("id")?.takeIf { it.isNotBlank() } ?: "husary"
+        val reciterName = selectedReciter?.optString("name")?.takeIf { it.isNotBlank() } ?: "Mahmoud Khalil Al-Husary"
+        val matchingSurahs = (0 until surahs.length()).mapNotNull { surahs.optJSONObject(it) }.filter { surah ->
+            normalized.isBlank() || surah.optString("transliteration").contains(normalized, true) ||
+                surah.optString("translation").contains(normalized, true) || surah.optString("name").contains(normalized, true) ||
+                reciterName.contains(normalized, true) || reciterId.contains(normalized, true)
+        }
+        return buildList {
+            for (surah in matchingSurahs) {
+                val number = surah.optInt("number")
+                val ayahCount = surah.optInt("ayahCount")
+                val startAyah = surah.optInt("startAyah", 0)
+                if (number !in 1..114 || ayahCount <= 0 || startAyah <= 0) continue
+                for (ayah in 1..ayahCount) {
+                    val globalAyah = startAyah + ayah - 1
+                    add(Track(
+                        id = "alfurqan:$reciterId:$number:$ayah",
+                        title = "${surah.optString("transliteration", "Surah $number")} · Ayah $ayah",
+                        artist = "$reciterName · ${surah.optString("translation")}",
+                        streamUrl = "$AL_FURQAN_BASE/audio/$reciterId/$globalAyah",
+                        isDownloadable = false, language = "Arabic",
+                        contentType = "Quran recitation · individual ayah", tradition = "Quran"
+                    ))
+                    if (size >= 250) return@buildList
+                }
+            }
+        }
+    }
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
         val types = listOf("audios", "books")
         val itemLists = coroutineScope {
