@@ -217,9 +217,13 @@ class MainActivity : ComponentActivity() {
                 onEditQueue = { tracks, startIndex, position ->
                     controller?.let { c ->
                         val resume = c.isPlaying
-                        c.setMediaItems(tracks.map { it.mediaItem() }, startIndex.coerceIn(0, (tracks.size - 1).coerceAtLeast(0)), position.coerceAtLeast(0L))
-                        c.prepare()
-                        if (resume) c.play()
+                        if (tracks.isEmpty()) {
+                            c.clearMediaItems()
+                        } else {
+                            c.setMediaItems(tracks.map { it.mediaItem() }, startIndex.coerceIn(0, tracks.lastIndex), position.coerceAtLeast(0L))
+                            c.prepare()
+                            if (resume) c.play()
+                        }
                     }
                 },
                 onDownload = { track ->
@@ -625,6 +629,13 @@ private fun JDMusaxApp(
 
     LaunchedEffect(tab) {
         if (tab == AppTab.EXPLORE && !trendingLoaded && !trendingLoading) loadTrending()
+        if (tab == AppTab.INSIGHTS) {
+            listeningSnapshot = analyticsStore.snapshot()
+            offlineTracks = offlineStore.completed().map { item ->
+                Track(id = "download:${item.downloadId}", title = item.title, artist = "Downloaded audio", localUri = item.uri.toString())
+            }
+            challenge = challengeStore.load()
+        }
     }
 
     BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
