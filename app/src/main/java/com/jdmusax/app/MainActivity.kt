@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.lifecycleScope
 import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
@@ -55,15 +56,21 @@ import okhttp3.Request
 import org.json.JSONArray
 import org.json.JSONObject
 
+@OptIn(UnstableApi::class)
 class MainActivity : ComponentActivity() {
     private var controller: MediaController? = null
-    private val repo = AudiusRepository()
+    private val repo = AudioLibraryRepository()
     private val listeningHistory by lazy { ListeningHistoryStore(applicationContext) }
     private var playing by mutableStateOf(false)
     private var sessionTracks by mutableStateOf(emptyList<Track>())
     private var sessionIndex by mutableIntStateOf(-1)
     private var sessionShuffleEnabled by mutableStateOf(false)
     private var sessionRepeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
+    private val audioEffects = AudioEffectsController()
+    private var audioBands by mutableStateOf(emptyList<AudioBand>())
+    private var audioPresets by mutableStateOf(emptyList<String>())
+    private var visualizerLevels by mutableStateOf(emptyList<Float>())
+    private var visualizerEnabled by mutableStateOf(false)
 
     private fun syncPlaybackSnapshot(player: Player) {
         sessionTracks = (0 until player.mediaItemCount).map { index ->
@@ -88,6 +95,14 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val visualizerPermissionLauncher = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted) {
+                visualizerEnabled = audioEffects.setVisualizerEnabled(true) { levels -> visualizerLevels = levels }
+            } else {
+                visualizerEnabled = false
+            }
+        }
+
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
         future.addListener({
@@ -104,7 +119,8 @@ class MainActivity : ComponentActivity() {
                                     artist = item.mediaMetadata.artist?.toString() ?: "Unknown artist",
                                     artwork = item.mediaMetadata.artworkUri?.toString(),
                                     localUri = if (isLocal) uri.toString() else null,
-                                    streamUrl = if (isLocal) null else uri?.toString()
+                                    streamUrl = if (isLocal) null else uri?.toString(),
+                                    isDownloadable = !isLocal
                                 )
                             )
                         }
@@ -112,6 +128,14 @@ class MainActivity : ComponentActivity() {
 
                     override fun onIsPlayingChanged(isPlaying: Boolean) {
                         playing = isPlaying
+                    }
+
+                    override fun onAudioSessionIdChanged(audioSessionId: Int) {
+                        audioBands = audioEffects.attach(audioSessionId)
+                        audioPresets = audioEffects.presetNames()
+                        if (visualizerEnabled) {
+                            visualizerEnabled = audioEffects.setVisualizerEnabled(true) { levels -> visualizerLevels = levels }
+                        }
                     }
 
                     override fun onEvents(player: Player, events: Player.Events) {
@@ -128,6 +152,8 @@ class MainActivity : ComponentActivity() {
                 })
                 controller = c
                 playing = c.isPlaying
+                audioBands = audioEffects.attach(c.audioSessionId)
+                audioPresets = audioEffects.presetNames()
                 syncPlaybackSnapshot(c)
             }
         }, MoreExecutors.directExecutor())
@@ -145,12 +171,27 @@ class MainActivity : ComponentActivity() {
                 sessionIndex = sessionIndex,
                 sessionShuffleEnabled = sessionShuffleEnabled,
                 sessionRepeatMode = sessionRepeatMode,
+                audioBands = audioBands,
+                audioPresets = audioPresets,
+                visualizerLevels = visualizerLevels,
+                visualizerEnabled = visualizerEnabled,
                 onSpeedChange = { speed -> controller?.setPlaybackSpeed(speed) },
                 onCurrentPosition = { controller?.currentPosition ?: 0L },
                 onCurrentDuration = { controller?.duration?.takeIf { it > 0L } ?: 0L },
                 onSeekTo = { position -> controller?.seekTo(position) },
                 onShuffleChange = { enabled -> controller?.shuffleModeEnabled = enabled },
                 onRepeatModeChange = { mode -> controller?.repeatMode = mode },
+                onBandLevelChange = { index, level -> audioBands = audioEffects.setBandLevel(index, level) },
+                onPresetChange = { index -> audioBands = audioEffects.usePreset(index) },
+                onVisualizerToggle = { enabled ->
+                    if (!enabled) {
+                        visualizerEnabled = audioEffects.setVisualizerEnabled(false) { levels -> visualizerLevels = levels }
+                    } else if (checkSelfPermission(android.Manifest.permission.RECORD_AUDIO) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                        visualizerEnabled = audioEffects.setVisualizerEnabled(true) { levels -> visualizerLevels = levels }
+                    } else {
+                        visualizerPermissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                },
                 onToggle = {
                     controller?.let { c -> if (c.isPlaying) c.pause() else c.play() }
                 },
@@ -158,9 +199,8 @@ class MainActivity : ComponentActivity() {
                 onNext = { controller?.seekToNextMediaItem() },
                 onPlayQueue = { tracks, startIndex ->
                     lifecycleScope.launch {
-                        val playable = tracks.mapNotNull { track ->
-                            if (track.localUri != null) track
-                            else runCatching { track.copy(streamUrl = repo.resolveStream(track.id)) }.getOrNull()
+                        val playable = tracks.filter { track ->
+                            track.localUri != null || track.streamUrl?.startsWith("https://") == true
                         }
                         if (playable.isNotEmpty()) {
                             val safeIndex = startIndex.coerceIn(0, playable.lastIndex)
@@ -173,13 +213,15 @@ class MainActivity : ComponentActivity() {
                     }
                 },
                 onDownload = { track ->
-                    if (track.isDownloadable) {
-                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80)
-                        val request = DownloadManager.Request(Uri.parse("https://api.audius.co/v1/tracks/${track.id}/download?app_name=JDmusax"))
+                    val url = track.streamUrl
+                    if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
+                        val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "JD-musax-audio" }
+                        val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
+                        val request = DownloadManager.Request(Uri.parse(url))
                             .setTitle(track.title)
-                            .setDescription("Downloading an Audius track marked downloadable")
+                            .setDescription("Downloading audio for offline listening")
                             .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
-                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.mp3")
+                            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "JD musax/$safeName.$extension")
                         (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                     }
                 }
@@ -188,6 +230,7 @@ class MainActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
+        audioEffects.release()
         controller?.release()
         super.onDestroy()
     }
@@ -218,7 +261,9 @@ class ListeningHistoryStore(context: Context) {
         entries.add(0, JSONObject().apply {
             put("id", track.id); put("title", track.title); put("artist", track.artist)
             put("artwork", track.artwork ?: ""); put("duration", track.duration)
-            put("localUri", track.localUri ?: ""); put("downloadable", track.isDownloadable)
+            put("localUri", track.localUri ?: ""); put("streamUrl", track.streamUrl ?: "")
+            put("downloadable", track.isDownloadable); put("language", track.language)
+            put("contentType", track.contentType); put("tradition", track.tradition)
             put("plays", count); put("playedAt", System.currentTimeMillis())
         })
         val array = JSONArray()
@@ -229,7 +274,9 @@ class ListeningHistoryStore(context: Context) {
         id = item.optString("id"), title = item.optString("title", "Unknown track"),
         artist = item.optString("artist", "Unknown artist"), artwork = item.optString("artwork").ifBlank { null },
         duration = item.optLong("duration", 0L), localUri = item.optString("localUri").ifBlank { null },
-        isDownloadable = item.optBoolean("downloadable", false)
+        streamUrl = item.optString("streamUrl").ifBlank { null }, isDownloadable = item.optBoolean("downloadable", false),
+        language = item.optString("language"), contentType = item.optString("contentType", "Audiobook"),
+        tradition = item.optString("tradition", "General")
     )
     fun recent(): List<Track> = read().sortedByDescending { it.optLong("playedAt") }.map(::toTrack)
     fun mostPlayed(): List<Track> = read().sortedWith(compareByDescending<JSONObject> { it.optInt("plays") }.thenByDescending { it.optLong("playedAt") }).map(::toTrack)
@@ -251,7 +298,10 @@ class LibraryStore(context: Context) {
                         artwork = o.optString("artwork").ifBlank { null },
                         duration = o.optLong("duration", 0L),
                         localUri = o.optString("localUri").ifBlank { null },
-                        isDownloadable = o.optBoolean("isDownloadable", false)
+                        streamUrl = o.optString("streamUrl").ifBlank { null },
+                        isDownloadable = o.optBoolean("isDownloadable", false),
+                        language = o.optString("language"), contentType = o.optString("contentType", "Audiobook"),
+                        tradition = o.optString("tradition", "General")
                     )
                 }
             }
@@ -268,7 +318,11 @@ class LibraryStore(context: Context) {
                 put("artwork", t.artwork ?: "")
                 put("duration", t.duration)
                 put("localUri", t.localUri ?: "")
+                put("streamUrl", t.streamUrl ?: "")
                 put("isDownloadable", t.isDownloadable)
+                put("language", t.language)
+                put("contentType", t.contentType)
+                put("tradition", t.tradition)
             })
         }
         prefs.edit().putString("tracks", arr.toString()).apply()
@@ -279,7 +333,7 @@ private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dis
     if (url.isNullOrBlank()) return@withContext null
     runCatching {
         val request = Request.Builder().url(url).build()
-        trendingClient.newCall(request).execute().use { response ->
+        artworkClient.newCall(request).execute().use { response ->
             if (!response.isSuccessful) return@use null
             val stream = response.body?.byteStream() ?: return@use null
             val options = BitmapFactory.Options().apply { inSampleSize = 4 }
@@ -299,23 +353,10 @@ private suspend fun extractArtworkAccent(url: String?): Color? = withContext(Dis
     }.getOrNull()
 }
 
-/* ---------- Trending request ---------- */
+/* ---------- Artwork color extraction ---------- */
 
-private val trendingClient = OkHttpClient()
+private val artworkClient = OkHttpClient()
 
-private suspend fun fetchTrending(): List<Track> = withContext(Dispatchers.IO) {
-    val request = Request.Builder()
-        .url("https://api.audius.co/v1/tracks/trending?limit=25&app_name=JDmusax")
-        .build()
-    trendingClient.newCall(request).execute().use { response ->
-        if (!response.isSuccessful) error("Trending failed: ${response.code}")
-        val body = response.body?.string() ?: return@withContext emptyList()
-        val data = JSONObject(body).optJSONArray("data") ?: return@withContext emptyList()
-        (0 until data.length()).mapNotNull { i ->
-            data.optJSONObject(i)?.let(Track::fromAudius)
-        }
-    }
-}
 
 /* ---------- UI ---------- */
 
@@ -333,14 +374,15 @@ internal val LocalAppPalette = compositionLocalOf {
 
 private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
-    EXPLORE("Explore", Icons.Default.Explore),
-    LIBRARY("Library", Icons.Default.LibraryMusic),
-    SETTINGS("Settings", Icons.Default.Settings)
+    EXPLORE("Discover", Icons.Default.Explore),
+    LIBRARY("Library", Icons.Default.MenuBook),
+    SETTINGS("Settings", Icons.Default.Settings),
+    PLAYER("Player", Icons.Default.GraphicEq)
 }
 
 @Composable
 private fun JDMusaxApp(
-    repo: AudiusRepository,
+    repo: AudioLibraryRepository,
     library: LibraryStore,
     settings: SettingsStore,
     isPlaying: Boolean,
@@ -348,6 +390,10 @@ private fun JDMusaxApp(
     sessionIndex: Int,
     sessionShuffleEnabled: Boolean,
     sessionRepeatMode: Int,
+    audioBands: List<AudioBand>,
+    audioPresets: List<String>,
+    visualizerLevels: List<Float>,
+    visualizerEnabled: Boolean,
     onToggle: () -> Unit,
     onPrevious: () -> Unit,
     onNext: () -> Unit,
@@ -358,7 +404,10 @@ private fun JDMusaxApp(
     onCurrentDuration: () -> Long,
     onSeekTo: (Long) -> Unit,
     onShuffleChange: (Boolean) -> Unit,
-    onRepeatModeChange: (Int) -> Unit
+    onRepeatModeChange: (Int) -> Unit,
+    onBandLevelChange: (Int, Int) -> Unit,
+    onPresetChange: (Int) -> Unit,
+    onVisualizerToggle: (Boolean) -> Unit
 ) {
     var accentName by remember { mutableStateOf(settings.getAccent()) }
     var dynamicTheme by remember { mutableStateOf(settings.isDynamicThemeEnabled()) }
@@ -392,7 +441,6 @@ private fun JDMusaxApp(
     var nowPlaying by remember { mutableStateOf<Track?>(null) }
     var playbackQueue by remember { mutableStateOf(emptyList<Track>()) }
     var playbackIndex by remember { mutableIntStateOf(-1) }
-    var showNowPlaying by remember { mutableStateOf(false) }
     var playbackSpeed by remember { mutableFloatStateOf(1f) }
     var sleepMinutes by remember { mutableIntStateOf(0) }
     var positionMs by remember { mutableLongStateOf(0L) }
@@ -418,7 +466,6 @@ private fun JDMusaxApp(
             playbackQueue = emptyList()
             playbackIndex = -1
             nowPlaying = null
-            showNowPlaying = false
         }
     }
 
@@ -471,16 +518,18 @@ private fun JDMusaxApp(
 
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
-    var selectedCategory by remember { mutableStateOf("Pakistani") }
+    var selectedCategory by remember { mutableStateOf("All Islamic") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
+    var searchGeneration by remember { mutableIntStateOf(0) }
 
-    // Explore / trending state
+    // Explore / featured state
     var trending by remember { mutableStateOf(emptyList<Track>()) }
     var trendingLoading by remember { mutableStateOf(false) }
     var trendingError by remember { mutableStateOf<String?>(null) }
     var trendingLoaded by remember { mutableStateOf(false) }
+    var featuredGeneration by remember { mutableIntStateOf(0) }
 
     fun play(track: Track, queue: List<Track>) {
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
@@ -503,27 +552,34 @@ private fun JDMusaxApp(
         library.save(saved.toList())
     }
 
-    fun runSearch() {
-        if (query.isBlank()) return
+    fun runSearch(category: String = selectedCategory) {
+        val requestId = ++searchGeneration
         scope.launch {
             searching = true
             searchError = null
-            runCatching { repo.search("${selectedCategory} $query") }
-                .onSuccess { results = it }
-                .onFailure { searchError = it.message ?: "Search failed" }
-            searching = false
+            val response = runCatching {
+                if (query.isBlank()) repo.featured(category) else repo.search(query, category)
+            }
+            if (requestId == searchGeneration) {
+                response.onSuccess { results = it }
+                    .onFailure { searchError = it.message ?: "Search failed" }
+                searching = false
+            }
         }
     }
 
     fun loadTrending(category: String = selectedCategory) {
         selectedCategory = category
+        val requestId = ++featuredGeneration
         scope.launch {
             trendingLoading = true
             trendingError = null
-            runCatching { repo.search("${categoryQuery(selectedCategory)} music") }
-                .onSuccess { trending = it; trendingLoaded = true }
-                .onFailure { trendingError = it.message ?: "Could not load trending" }
-            trendingLoading = false
+            val response = runCatching { repo.featured(category) }
+            if (requestId == featuredGeneration) {
+                response.onSuccess { trending = it; trendingLoaded = true }
+                    .onFailure { trendingError = it.message ?: "Could not load featured audio" }
+                trendingLoading = false
+            }
         }
     }
 
@@ -531,7 +587,7 @@ private fun JDMusaxApp(
         if (tab == AppTab.EXPLORE && !trendingLoaded && !trendingLoading) loadTrending()
     }
 
-    BackHandler(enabled = showNowPlaying) { showNowPlaying = false }
+    BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
 
     MaterialTheme(
         colorScheme = if (appearanceMode == "light") {
@@ -544,40 +600,31 @@ private fun JDMusaxApp(
         Scaffold(
             containerColor = palette.background,
             bottomBar = {
-                if (!showNowPlaying) Column {
-                    MiniPlayer(
-                        nowPlaying, isPlaying, accent,
-                        onPrevious = onPrevious,
-                        onToggle = onToggle,
-                        onNext = onNext,
-                        onOpen = { showNowPlaying = true }
-                    )
-                    NavigationBar(containerColor = palette.surface) {
-                        AppTab.values().forEach { t ->
-                            NavigationBarItem(
-                                selected = tab == t,
-                                onClick = { tab = t },
-                                icon = { Icon(t.icon, contentDescription = null) },
-                                label = { Text(t.label) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
-                                    selectedTextColor = accent,
-                                    indicatorColor = accent,
-                                    unselectedIconColor = palette.muted,
-                                    unselectedTextColor = palette.muted
-                                )
+                NavigationBar(containerColor = palette.surface) {
+                    AppTab.values().forEach { t ->
+                        NavigationBarItem(
+                            selected = tab == t,
+                            onClick = { tab = t },
+                            icon = { Icon(t.icon, contentDescription = null) },
+                            label = { Text(t.label) },
+                            colors = NavigationBarItemDefaults.colors(
+                                selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
+                                selectedTextColor = accent,
+                                indicatorColor = accent,
+                                unselectedIconColor = palette.muted,
+                                unselectedTextColor = palette.muted
                             )
-                        }
+                        )
                     }
                 }
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                if (showNowPlaying && nowPlaying != null) {
+                if (tab == AppTab.PLAYER && nowPlaying != null) {
                     NowPlayingScreen(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
                         isPlaying = isPlaying, palette = palette, accent = accent, speed = playbackSpeed,
-                        sleepMinutes = sleepMinutes, onClose = { showNowPlaying = false }, onToggle = onToggle,
+                        sleepMinutes = sleepMinutes, onClose = { tab = AppTab.HOME }, onToggle = onToggle,
                         onPrevious = onPrevious,
                         onNext = onNext,
                         onSelectTrack = { skipTo(it) },
@@ -598,7 +645,7 @@ private fun JDMusaxApp(
                         query = query,
                         onQueryChange = { query = it },
                         category = selectedCategory,
-                        onCategoryChange = { selectedCategory = it; runSearch() },
+                        onCategoryChange = { selectedCategory = it; runSearch(it) },
                         onSearch = { runSearch() },
                         loading = searching,
                         error = searchError,
@@ -651,7 +698,19 @@ private fun JDMusaxApp(
                         onAppearanceModeChange = { mode ->
                             appearanceMode = mode
                             settings.setAppearanceMode(mode)
-                        }
+                        },
+                        audioBands = audioBands,
+                        audioPresets = audioPresets,
+                        onBandLevelChange = onBandLevelChange,
+                        onPresetChange = onPresetChange,
+                        visualizerEnabled = visualizerEnabled,
+                        visualizerLevels = visualizerLevels,
+                        onVisualizerToggle = onVisualizerToggle
+                    )
+                    AppTab.PLAYER -> Text(
+                        "Play a track to open the full player here.",
+                        color = palette.muted,
+                        modifier = Modifier.padding(24.dp)
                     )
                 }
             }
@@ -660,16 +719,7 @@ private fun JDMusaxApp(
     }
 }
 
-private val musicCategories = listOf("Pakistani", "Indian", "Hollywood", "Lollywood", "Hindi")
-
-private fun categoryQuery(category: String): String = when (category) {
-    "Pakistani" -> "Pakistani"
-    "Indian" -> "Indian"
-    "Hollywood" -> "Hollywood"
-    "Lollywood" -> "Lollywood"
-    "Hindi" -> "Hindi"
-    else -> "Pakistani"
-}
+private val musicCategories = listOf("All Islamic", "Sunni Library", "Shia Library", "Other Islamic Perspectives", "Comparative Islamic Studies", "Unclassified / General Islamic", "Urdu Audio", "English Audio", "Arabic Audio", "General Audiobooks")
 
 @Composable
 private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accent: Color) {
@@ -682,7 +732,20 @@ private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accen
             FilterChip(
                 selected = selected == category,
                 onClick = { onSelected(category) },
-                label = { Text(category) },
+                label = { Text(category, maxLines = 1) },
+                leadingIcon = {
+                    Icon(
+                        when (category) {
+                            "Urdu Audio", "English Audio", "Arabic Audio" -> Icons.Default.Language
+                            "Comparative Islamic Studies" -> Icons.Default.CompareArrows
+                            "Other Islamic Perspectives" -> Icons.Default.Public
+                            "General Audiobooks" -> Icons.Default.Headphones
+                            else -> Icons.Default.MenuBook
+                        },
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
                 colors = FilterChipDefaults.filterChipColors(
                     selectedContainerColor = accent,
                     selectedLabelColor = Color.Black
@@ -710,13 +773,13 @@ private fun HomeScreen(
  ) {
     val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("JD musax", "MUSIC, WITHOUT THE NOISE.")
+        ScreenHeader("JD musax", "AUDIOBOOKS • ISLAMIC AUDIO • YOUR LIBRARY")
         CategoryPicker(category, onCategoryChange, accent)
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search tracks on Audius") },
+            placeholder = { Text("Search books, lectures, authors…") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onSearch) {
@@ -739,8 +802,8 @@ private fun HomeScreen(
                 loading = loading,
                 error = error,
                 tracks = tracks,
-                emptyTitle = "Find your next repeat.",
-                emptySubtitle = "Search Audius to discover independent music.",
+                emptyTitle = "Find something meaningful to hear.",
+                emptySubtitle = "Search audiobooks, Islamic lectures, and authors.",
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
@@ -768,7 +831,7 @@ private fun ExploreScreen(
     val palette = LocalAppPalette.current
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { ScreenHeader("Explore", "TRENDING ON AUDIUS") }
+            Column(Modifier.weight(1f)) { ScreenHeader("Discover", "FEATURED AUDIO LIBRARIES") }
             IconButton(onClick = onRefresh) {
                 Icon(Icons.Default.Refresh, contentDescription = "Refresh", tint = accent)
             }
@@ -779,8 +842,8 @@ private fun ExploreScreen(
                 loading = loading,
                 error = error,
                 tracks = tracks,
-                emptyTitle = "Nothing trending yet",
-                emptySubtitle = "Tap refresh to try again.",
+                emptyTitle = "No featured audio yet",
+                emptySubtitle = "Refresh to check the selected library again.",
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
@@ -823,7 +886,7 @@ private fun LibraryScreen(
     }
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR FAVORITES & MUSIC") }
+            Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR SAVED AUDIO & LISTENING HISTORY") }
             FilledTonalButton(onClick = { picker.launch(arrayOf("audio/*")) }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))
@@ -854,10 +917,11 @@ private fun LibraryScreen(
 
 @Composable
 private fun ScreenHeader(title: String, subtitle: String) {
+    val palette = LocalAppPalette.current
     Column {
-        Spacer(Modifier.height(22.dp))
-        Text(title, fontSize = 30.sp, fontWeight = FontWeight.Black, color = Color.White)
-        Text(subtitle, color = Color.Gray, fontSize = 10.sp, letterSpacing = 2.sp)
+        Spacer(Modifier.height(18.dp))
+        Text(title, fontSize = 29.sp, fontWeight = FontWeight.Bold, color = palette.text)
+        Text(subtitle, color = palette.muted, fontSize = 10.sp, letterSpacing = 1.5.sp)
         Spacer(Modifier.height(18.dp))
     }
 }
@@ -903,14 +967,17 @@ private fun TrackContent(
 
 @Composable
 private fun EmptyState(title: String, subtitle: String) {
+    val palette = LocalAppPalette.current
     Column(
         Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.Center,
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        Text(title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+        Icon(Icons.Default.Headphones, contentDescription = null, tint = palette.muted, modifier = Modifier.size(38.dp))
+        Spacer(Modifier.height(12.dp))
+        Text(title, color = palette.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
-        Text(subtitle, color = Color.Gray)
+        Text(subtitle, color = palette.muted)
     }
 }
 
@@ -933,18 +1000,44 @@ private fun TrackRow(
         Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 10.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        AsyncImage(
-            model = track.artwork,
-            contentDescription = null,
-            modifier = Modifier
-                .size(52.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(palette.surfaceVariant)
-        )
+        Box(
+            Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(palette.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!track.artwork.isNullOrBlank()) {
+                AsyncImage(
+                    model = track.artwork,
+                    contentDescription = "${track.contentType} cover",
+                    modifier = Modifier.fillMaxSize()
+                )
+            } else {
+                Icon(
+                    if (track.contentType.contains("lecture", true)) Icons.Default.Headphones else Icons.Default.MenuBook,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(26.dp)
+                )
+            }
+        }
         Spacer(Modifier.width(12.dp))
         Column(Modifier.weight(1f)) {
             Text(track.title, color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold)
-            Text(track.artist, color = palette.muted, maxLines = 1, fontSize = 12.sp)
+            Text(
+                listOf(
+                    track.contentType,
+                    when (track.language.lowercase()) {
+                        "ur" -> "Urdu"
+                        "en" -> "English"
+                        "ar" -> "Arabic"
+                        else -> track.language.takeIf { it.isNotBlank() }
+                    },
+                    track.artist
+                ).filterNotNull().joinToString(" • "),
+                color = palette.muted, maxLines = 1, fontSize = 11.sp
+            )
+            if (track.tradition != "General" && track.tradition != "Unclassified / General Islamic") {
+                Text(track.tradition, color = accent, maxLines = 1, fontSize = 10.sp)
+            }
         }
         IconButton(onClick = onToggleSave) {
             Icon(
@@ -960,59 +1053,6 @@ private fun TrackRow(
         }
         Icon(Icons.Default.PlayCircle, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
     }
-    }
-}
-
-@Composable
-private fun MiniPlayer(
-    track: Track?,
-    isPlaying: Boolean,
-    accent: Color,
-    onPrevious: () -> Unit,
-    onToggle: () -> Unit,
-    onNext: () -> Unit,
-    onOpen: () -> Unit
- ) {
-    val palette = LocalAppPalette.current
-    Surface(
-        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp).clickable(onClick = onOpen),
-        shape = RoundedCornerShape(22.dp),
-        color = palette.surfaceVariant
-    ) {
-        Row(
-            modifier = Modifier.fillMaxWidth().height(76.dp).padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceEvenly
-        ) {
-            IconButton(onClick = onPrevious, enabled = track != null) {
-                Icon(Icons.Default.SkipPrevious, contentDescription = "Previous track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
-            }
-            Box(
-                Modifier.size(54.dp).clip(RoundedCornerShape(12.dp)).background(palette.surface),
-                contentAlignment = Alignment.Center
-            ) {
-                if (track?.artwork != null) {
-                    AsyncImage(model = track.artwork, contentDescription = "Album artwork", modifier = Modifier.fillMaxSize())
-                } else {
-                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = accent, modifier = Modifier.size(28.dp))
-                }
-            }
-            Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
-                Text(track?.title ?: "Nothing playing", color = palette.text, maxLines = 1, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
-                Text(track?.artist ?: "Choose a track to start", color = palette.muted, maxLines = 1, fontSize = 11.sp)
-            }
-            IconButton(onClick = onToggle, enabled = track != null) {
-                Icon(
-                    if (isPlaying) Icons.Default.PauseCircleFilled else Icons.Default.PlayCircleFilled,
-                    contentDescription = if (isPlaying) "Pause" else "Play",
-                    tint = if (track != null) accent else Color.DarkGray,
-                    modifier = Modifier.size(38.dp)
-                )
-            }
-            IconButton(onClick = onNext, enabled = track != null) {
-                Icon(Icons.Default.SkipNext, contentDescription = "Next track", tint = if (track != null) palette.text else palette.muted, modifier = Modifier.size(30.dp))
-            }
-        }
     }
 }
 
@@ -1035,11 +1075,28 @@ private fun NowPlayingScreen(
             Icon(Icons.Default.GraphicEq, null, tint = accent)
         }
         Spacer(Modifier.height(16.dp))
-        AsyncImage(model = track.artwork, contentDescription = "Album artwork",
-            modifier = Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(1f).clip(RoundedCornerShape(26.dp)).background(palette.surfaceVariant))
+        Box(
+            Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(1f)
+                .clip(RoundedCornerShape(26.dp)).background(palette.surfaceVariant),
+            contentAlignment = Alignment.Center
+        ) {
+            if (!track.artwork.isNullOrBlank()) {
+                AsyncImage(model = track.artwork, contentDescription = "${track.contentType} cover", modifier = Modifier.fillMaxSize())
+            } else {
+                Icon(
+                    if (track.contentType.contains("lecture", true)) Icons.Default.Headphones else Icons.Default.MenuBook,
+                    contentDescription = null, tint = accent, modifier = Modifier.size(72.dp)
+                )
+            }
+        }
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
+        Text(
+            listOf(track.contentType, when (track.language.lowercase()) { "ur" -> "Urdu"; "en" -> "English"; "ar" -> "Arabic"; else -> track.language })
+                .filter { it.isNotBlank() }.joinToString(" • "),
+            color = accent, fontSize = 12.sp
+        )
         val progress = if (durationMs > 0L) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
         Slider(value = progress, onValueChange = { fraction -> if (durationMs > 0L) onSeekTo((fraction * durationMs).toLong()) },
             enabled = durationMs > 0L, modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
