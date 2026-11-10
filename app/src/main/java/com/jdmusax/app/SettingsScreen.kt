@@ -8,6 +8,9 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -213,7 +216,7 @@ fun SettingsScreen(
                                 Modifier.width(4.dp)
                                     .height((8f + level.coerceIn(0f, 1f) * 76f).dp)
                                     .clip(RoundedCornerShape(3.dp))
-                                    .background(accent)
+                                    .background(androidx.compose.material3.MaterialTheme.colorScheme.primary)
                             )
                         }
                     }
