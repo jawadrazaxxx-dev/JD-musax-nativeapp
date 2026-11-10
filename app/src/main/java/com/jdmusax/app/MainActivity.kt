@@ -119,7 +119,8 @@ class MainActivity : ComponentActivity() {
                                     artist = item.mediaMetadata.artist?.toString() ?: "Unknown artist",
                                     artwork = item.mediaMetadata.artworkUri?.toString(),
                                     localUri = if (isLocal) uri.toString() else null,
-                                    streamUrl = if (isLocal) null else uri?.toString()
+                                    streamUrl = if (isLocal) null else uri?.toString(),
+                                    isDownloadable = !isLocal
                                 )
                             )
                         }
