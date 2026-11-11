@@ -556,6 +556,8 @@ private fun JDMusaxApp(
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Shia Audiobooks") }
+    var quranReciters by remember { mutableStateOf(emptyList<QuranReciter>()) }
+    var selectedQuranReciterKey by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -570,9 +572,16 @@ private fun JDMusaxApp(
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    var embeddedAudioUrl by remember { mutableStateOf<String?>(null) }
+
     fun play(track: Track, queue: List<Track>) {
         if (!track.externalUrl.isNullOrBlank()) {
-            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
+            val host = Uri.parse(track.externalUrl).host.orEmpty()
+            if (host == "azadari.media" || host.endsWith(".azadari.media") || host == "rawda.app" || host.endsWith(".rawda.app")) {
+                embeddedAudioUrl = track.externalUrl
+            } else {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
+            }
             return
         }
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
@@ -611,7 +620,8 @@ private fun JDMusaxApp(
             searching = true
             searchError = null
             val response = runCatching {
-                if (query.isBlank()) repo.featured(category) else repo.search(query, category)
+                if (category == "Quran") repo.searchQuran(query, selectedQuranReciterKey)
+                else if (query.isBlank()) repo.featured(category) else repo.search(query, category)
             }
             if (requestId == searchGeneration) {
                 response.onSuccess { results = it }
@@ -636,6 +646,20 @@ private fun JDMusaxApp(
         }
     }
 
+    LaunchedEffect(selectedCategory) {
+        if (selectedCategory == "Quran") {
+            scope.launch {
+                val available = runCatching { repo.quranReciters() }.getOrDefault(emptyList())
+                quranReciters = available
+                if (selectedQuranReciterKey !in available.map { it.key }) {
+                    selectedQuranReciterKey = available.firstOrNull { it.name.contains("Mishary", true) }?.key
+                        ?: available.firstOrNull()?.key.orEmpty()
+                }
+                runSearch("Quran")
+            }
+        }
+    }
+
     LaunchedEffect(tab) {
         if (tab == AppTab.EXPLORE && !trendingLoaded && !trendingLoading) loadTrending()
         if (tab == AppTab.INSIGHTS) {
@@ -647,6 +671,7 @@ private fun JDMusaxApp(
         }
     }
 
+    BackHandler(enabled = embeddedAudioUrl != null) { embeddedAudioUrl = null }
     BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
 
     MaterialTheme(
@@ -680,7 +705,9 @@ private fun JDMusaxApp(
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                if (tab == AppTab.PLAYER && nowPlaying != null) {
+                if (embeddedAudioUrl != null) {
+                    EmbeddedAudioScreen(url = embeddedAudioUrl!!, onClose = { embeddedAudioUrl = null })
+                } else if (tab == AppTab.PLAYER && nowPlaying != null) {
                     NowPlayingScreen(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
                         isPlaying = isPlaying, palette = palette, accent = accent, audioTheme = audioTheme, speed = playbackSpeed,
@@ -714,7 +741,10 @@ private fun JDMusaxApp(
                         query = query,
                         onQueryChange = { query = it },
                         category = selectedCategory,
-                        onCategoryChange = { selectedCategory = it; runSearch(it) },
+                        onCategoryChange = { selectedCategory = it; if (it != "Quran") runSearch(it) },
+                        quranReciters = quranReciters,
+                        selectedQuranReciterKey = selectedQuranReciterKey,
+                        onQuranReciterChange = { selectedQuranReciterKey = it; runSearch("Quran") },
                         onSearch = { runSearch() },
                         loading = searching,
                         error = searchError,
@@ -814,7 +844,7 @@ private fun JDMusaxApp(
 
 private val musicCategories = listOf(
     "Shia Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer",
-    "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts"
+    "Majalis", "Dua", "Ziarat", "Manqabat", "Shia Podcasts"
 )
 
 @Composable
@@ -837,12 +867,49 @@ private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accen
     }
 }
 
+
+@Composable
+private fun QuranReciterPicker(
+    reciters: List<QuranReciter>,
+    selectedKey: String,
+    accent: Color,
+    onSelected: (String) -> Unit
+) {
+    val palette = LocalAppPalette.current
+    var expanded by remember { mutableStateOf(false) }
+    val selected = reciters.firstOrNull { it.key == selectedKey }
+    Box(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = reciters.isNotEmpty(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.text)
+        ) {
+            Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = accent)
+            Spacer(Modifier.width(8.dp))
+            Text(selected?.displayName ?: if (reciters.isEmpty()) "Loading full-Quran reciters…" else "Choose reciter", modifier = Modifier.weight(1f), maxLines = 1)
+            Icon(Icons.Default.ExpandMore, contentDescription = "Choose reciter")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            reciters.forEach { reciter ->
+                DropdownMenuItem(
+                    text = { Text(reciter.displayName) },
+                    onClick = { expanded = false; onSelected(reciter.key) }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeScreen(
     query: String,
     onQueryChange: (String) -> Unit,
     category: String,
     onCategoryChange: (String) -> Unit,
+    quranReciters: List<QuranReciter>,
+    selectedQuranReciterKey: String,
+    onQuranReciterChange: (String) -> Unit,
     onSearch: () -> Unit,
     loading: Boolean,
     error: String?,
@@ -871,11 +938,15 @@ private fun HomeScreen(
                 onContinue = { recentTracks.firstOrNull()?.let(onContinue) }
             )
         }
+        if (category == "Quran") {
+            QuranReciterPicker(quranReciters, selectedQuranReciterKey, accent, onQuranReciterChange)
+            Text("Complete Quran · 114 Surahs · Full-chapter audio", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+        }
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search books, lectures, authors…") },
+            placeholder = { Text(if (category == "Quran") "Find a Surah by name or number…" else "Search books, lectures, authors…") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onSearch) {
@@ -1267,6 +1338,52 @@ private fun TrackRow(
         }
         Icon(if (track.externalUrl != null) Icons.Default.OpenInNew else Icons.Default.PlayCircle, contentDescription = if (track.externalUrl != null) "Open source" else "Play", tint = accent, modifier = Modifier.size(28.dp))
     }
+    }
+}
+
+@Composable
+private fun EmbeddedAudioScreen(url: String, onClose: () -> Unit) {
+    val palette = LocalAppPalette.current
+    val safeUrl = url.takeIf {
+        val host = Uri.parse(it).host.orEmpty()
+        host == "azadari.media" || host.endsWith(".azadari.media") || host == "rawda.app" || host.endsWith(".rawda.app")
+    } ?: "https://azadari.media"
+    Column(Modifier.fillMaxSize().background(palette.background)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.text)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("SHIAudio · Official audio", color = palette.text, fontWeight = FontWeight.SemiBold)
+                Text("Playing inside SHIAudio", color = palette.muted, fontSize = 11.sp)
+            }
+            Icon(Icons.Default.Headphones, contentDescription = null, tint = palette.muted)
+        }
+        androidx.compose.ui.viewinterop.AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { viewContext ->
+                android.webkit.WebView(viewContext).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mediaPlaybackRequiresUserGesture = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    webViewClient = android.webkit.WebViewClient()
+                    webChromeClient = android.webkit.WebChromeClient()
+                    tag = safeUrl
+                    loadUrl(safeUrl)
+                }
+            },
+            update = { webView ->
+                if (webView.tag != safeUrl) {
+                    webView.tag = safeUrl
+                    webView.loadUrl(safeUrl)
+                }
+            }
+        )
     }
 }
 

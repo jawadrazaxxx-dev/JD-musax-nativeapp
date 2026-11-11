@@ -15,11 +15,24 @@ import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 
 // Remote catalogue adapters for Islamic audio and public-domain audiobooks.
+data class QuranReciter(
+    val key: String,
+    val name: String,
+    val style: String,
+    val server: String,
+    val surahIds: Set<Int>
+) {
+    val displayName: String get() = if (style.isBlank()) name else name + " · " + style
+}
+
 class AudioLibraryRepository {
+    @Volatile private var cachedQuranReciters: List<QuranReciter> = emptyList()
+    @Volatile private var cachedQuranSurahs: List<Pair<Int, String>> = emptyList()
     private val client = OkHttpClient.Builder().callTimeout(25, TimeUnit.SECONDS).build()
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
-        if (section == "Quran") return@withContext searchAlFurqanQuran(query)
+        if (section == "Quran") return@withContext searchQuran(query, "")
+        if (section in SHIA_AUDIO_CATEGORIES) return@withContext searchAzadariMedia(query.trim(), section)
         if (section in AUDIO_SOURCE_CATEGORIES) return@withContext sourceDirectory(query, section)
         if (section == "General Audiobooks") {
             val providers = coroutineScope {
@@ -41,6 +54,195 @@ class AudioLibraryRepository {
     }
 
     suspend fun featured(section: String): List<Track> = search("", section)
+
+    suspend fun quranReciters(): List<QuranReciter> = withContext(Dispatchers.IO) { loadQuranReciters() }
+
+    suspend fun searchQuran(query: String, reciterKey: String): List<Track> = withContext(Dispatchers.IO) {
+        val reciters = loadQuranReciters()
+        val reciter = reciters.firstOrNull { it.key == reciterKey }
+            ?: reciters.firstOrNull { it.name.contains("Mishary", true) }
+            ?: reciters.firstOrNull()
+            ?: return@withContext emptyList()
+        val surahs = loadQuranSurahs()
+        val normalized = query.trim()
+        surahs.asSequence()
+            .filter { (number, name) -> normalized.isBlank() || name.contains(normalized, true) || number.toString() == normalized }
+            .filter { (number, _) -> number in reciter.surahIds }
+            .map { (number, name) ->
+                val padded = number.toString().padStart(3, '0')
+                Track(
+                    id = "mp3quran:" + reciter.key + ":" + number,
+                    title = number.toString() + ". " + name,
+                    artist = reciter.displayName,
+                    streamUrl = reciter.server.trimEnd('/') + "/" + padded + ".mp3",
+                    isDownloadable = true,
+                    language = "Arabic",
+                    contentType = "Full Surah recitation",
+                    tradition = "Quran"
+                )
+            }.toList()
+    }
+
+    private suspend fun loadQuranReciters(): List<QuranReciter> {
+        cachedQuranReciters.takeIf { it.isNotEmpty() }?.let { return it }
+        val root = getJson("https://www.mp3quran.net/api/v3/reciters?language=eng") as? JSONObject ?: return emptyList()
+        val rows = root.optJSONArray("reciters") ?: JSONArray()
+        val parsed = buildList {
+            for (i in 0 until rows.length()) {
+                val reciter = rows.optJSONObject(i) ?: continue
+                val reciterId = reciter.optInt("id")
+                val name = reciter.optString("name").ifBlank { "Reciter " + reciterId }
+                val moshaf = reciter.optJSONArray("moshaf") ?: JSONArray()
+                for (j in 0 until moshaf.length()) {
+                    val read = moshaf.optJSONObject(j) ?: continue
+                    val server = read.optString("server").takeIf { it.startsWith("https://") } ?: continue
+                    val ids = read.optString("surah_list").split(',').mapNotNull { it.trim().toIntOrNull() }.toSet()
+                    val declaredTotal = read.optInt("surah_total", ids.size)
+                    if (ids.size < 114 || declaredTotal < 114) continue
+                    val readId = read.optInt("id")
+                    add(QuranReciter(reciterId.toString() + ":" + readId, name, read.optString("name"), server, ids))
+                }
+            }
+        }.distinctBy { it.key }
+        cachedQuranReciters = parsed
+        return parsed
+    }
+
+    private suspend fun loadQuranSurahs(): List<Pair<Int, String>> {
+        cachedQuranSurahs.takeIf { it.size == 114 }?.let { return it }
+        val root = getJson("https://www.mp3quran.net/api/v3/suwar?language=eng") as? JSONObject ?: return emptyList()
+        val rows = root.optJSONArray("suwar") ?: JSONArray()
+        val parsed = (0 until rows.length()).mapNotNull { index ->
+            val item = rows.optJSONObject(index) ?: return@mapNotNull null
+            val number = item.optInt("id")
+            val name = item.optString("name").trim()
+            if (number in 1..114 && name.isNotBlank()) number to name else null
+        }.sortedBy { it.first }
+        cachedQuranSurahs = parsed
+        return parsed
+    }
+
+    /**
+     * Loads category catalogues from Azadari Media. Track pages are opened in an
+     * in-app WebView when the publisher does not expose a stable direct audio URL.
+     * Direct audio URLs are handed to Media3 when the page publishes one.
+     */
+    private suspend fun searchAzadariMedia(query: String, section: String): List<Track> {
+        val slug = when (section) {
+            "Nohay" -> "nohay"
+            "Manqabat" -> "manqabat"
+            "Marsiya" -> "marsiya"
+            "Majalis" -> "majlis"
+            "Dua" -> "dua"
+            "Ziarat" -> "ziaraat"
+            "Duas & Ziyarat" -> "dua"
+            else -> "ziaraat"
+        }
+        // Azadari Media exposes dedicated category pages for the other sections.
+        // Its Marsiya content is grouped under Latmiyat on Rawda, so open Rawda's
+        // official in-app catalogue rather than inventing a non-existent route.
+        val categoryUrl = if (section == "Marsiya") "https://rawda.app/" else "https://azadari.media/category/" + slug
+        if (section == "Marsiya") {
+            return listOf(Track(
+                id = "rawda:marsiya",
+                title = "Marsiya · Browse recitations",
+                artist = "Rawda · Official Shia audio catalogue",
+                contentType = section,
+                language = "Urdu / Arabic / Farsi",
+                tradition = "Shia",
+                externalUrl = categoryUrl,
+                isDownloadable = false
+            ))
+        }
+        val html = runCatching { getHtml(categoryUrl) }.getOrDefault("")
+        val anchorPattern = Regex(
+            """<a\b([^>]*?href=["']([^"']+)["'][^>]*)>(.*?)</a>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        val allowedPath = Regex("""^/(?:nauha|noha|manqabat|marsiya|majlis|dua|ziaraat)/[^/?#]+""", RegexOption.IGNORE_CASE)
+        val discovered = anchorPattern.findAll(html).mapNotNull { match ->
+            val attrs = match.groupValues[1]
+            val href = match.groupValues[2].replace("&amp;", "&")
+            val absolute = when {
+                href.startsWith("https://azadari.media/") -> href
+                href.startsWith("/") -> "https://azadari.media" + href
+                else -> return@mapNotNull null
+            }
+            val path = runCatching { android.net.Uri.parse(absolute).path.orEmpty() }.getOrDefault("")
+            if (!allowedPath.containsMatchIn(path)) return@mapNotNull null
+            val inner = match.groupValues[3].replace(Regex("<[^>]+>"), " ")
+                .replace(Regex("\\s+"), " ").trim()
+            val titleAttr = Regex("""(?:title|aria-label)=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(attrs)?.groupValues?.get(1).orEmpty()
+            val title = (inner.ifBlank { titleAttr }).replace("&amp;", "&").replace("&#39;", "'")
+                .replace("&quot;", "\"").trim()
+            if (title.isBlank() || title.length < 3) return@mapNotNull null
+            absolute to title
+        }.distinctBy { it.first }.filter { (_, title) ->
+            query.isBlank() || title.contains(query, ignoreCase = true)
+        }.take(30).toList()
+
+        if (discovered.isEmpty()) {
+            // Keep the category usable even if the provider changes its page markup:
+            // the official category page itself is still opened inside SHIAudio.
+            return listOf(Track(
+                id = "azadari:category:" + slug,
+                title = section + " · Browse audio",
+                artist = "Azadari Media · Official catalogue",
+                contentType = section,
+                language = "Urdu / Arabic / Farsi",
+                tradition = "Shia",
+                externalUrl = categoryUrl,
+                isDownloadable = false
+            ))
+        }
+
+        return coroutineScope {
+            discovered.map { (pageUrl, title) -> async {
+                val detailHtml = runCatching { getHtml(pageUrl) }.getOrDefault("")
+                val directAudio = extractDirectAudioUrl(detailHtml)
+                Track(
+                    id = "azadari:" + pageUrl.substringAfter("azadari.media/"),
+                    title = title,
+                    artist = "Azadari Media",
+                    streamUrl = directAudio,
+                    externalUrl = if (directAudio == null) pageUrl else null,
+                    isDownloadable = false,
+                    language = "Urdu / Arabic / Farsi",
+                    contentType = section,
+                    tradition = "Shia"
+                )
+            } }.awaitAll()
+        }
+    }
+
+    private fun extractDirectAudioUrl(html: String): String? {
+        val patterns = listOf(
+            Regex("""<audio[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""<source[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex(""""(?:audioUrl|audio_url|streamUrl|stream_url)"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in patterns) {
+            val raw = pattern.find(html)?.groupValues?.getOrNull(1)?.replace("&amp;", "&")
+                ?.replace("\\/", "/") ?: continue
+            if (raw.startsWith("https://") &&
+                raw.substringBefore("?").lowercase().let { it.endsWith(".mp3") || it.endsWith(".m4a") || it.endsWith(".aac") || it.endsWith(".ogg") }) {
+                return raw
+            }
+        }
+        return null
+    }
+
+    private fun getHtml(url: String): String {
+        val request = Request.Builder().url(url)
+            .header("Accept", "text/html,application/xhtml+xml")
+            .header("User-Agent", "SHIAudio/1.0 (Android)")
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("Azadari Media returned HTTP " + response.code)
+            return response.body?.string().orEmpty()
+        }
+    }
 
     private data class AudioSource(val name: String, val description: String, val url: String, val categories: Set<String>, val language: String = "Urdu / English")
 
@@ -74,54 +276,11 @@ class AudioLibraryRepository {
 
     companion object {
         // Only this tab is intentionally a provider directory. Quran has a live catalogue adapter below.
-        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Audiobooks", "Nohay", "Marsiya", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts")
+        private val SHIA_AUDIO_CATEGORIES = setOf("Nohay", "Marsiya", "Manqabat", "Majalis", "Dua", "Ziarat", "Duas & Ziyarat")
+        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Audiobooks", "Tafseer", "Shia Podcasts")
         private const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
-        private const val AL_FURQAN_BASE = "https://alfurqan.online/api/v1"
     }
 
-    /**
-     * Live Quran catalogue backed by Al Furqan's public API.
-     * Each result is an individual ayah stream, not a falsely labelled full-surah file.
-     */
-    private suspend fun searchAlFurqanQuran(query: String): List<Track> {
-        val surahRoot = getJson("$AL_FURQAN_BASE/surahs") as? JSONObject ?: return emptyList()
-        val surahs = surahRoot.optJSONArray("surahs") ?: JSONArray()
-        val reciterRoot = getJson("$AL_FURQAN_BASE/reciters") as? JSONObject ?: JSONObject()
-        val reciters = reciterRoot.optJSONArray("reciters") ?: JSONArray()
-        val normalized = query.trim().lowercase()
-        val availableReciters = (0 until reciters.length()).mapNotNull { reciters.optJSONObject(it) }
-        val selectedReciter = availableReciters.firstOrNull { reciter ->
-            normalized.isNotBlank() && (reciter.optString("name").contains(normalized, true) ||
-                reciter.optString("arabicName").contains(normalized, true) || reciter.optString("id").contains(normalized, true))
-        } ?: availableReciters.firstOrNull { it.optString("id") == "husary" } ?: availableReciters.firstOrNull()
-        val reciterId = selectedReciter?.optString("id")?.takeIf { it.isNotBlank() } ?: "husary"
-        val reciterName = selectedReciter?.optString("name")?.takeIf { it.isNotBlank() } ?: "Mahmoud Khalil Al-Husary"
-        val matchingSurahs = (0 until surahs.length()).mapNotNull { surahs.optJSONObject(it) }.filter { surah ->
-            normalized.isBlank() || surah.optString("transliteration").contains(normalized, true) ||
-                surah.optString("translation").contains(normalized, true) || surah.optString("name").contains(normalized, true) ||
-                reciterName.contains(normalized, true) || reciterId.contains(normalized, true)
-        }
-        return buildList {
-            for (surah in matchingSurahs) {
-                val number = surah.optInt("number")
-                val ayahCount = surah.optInt("ayahCount")
-                val startAyah = surah.optInt("startAyah", 0)
-                if (number !in 1..114 || ayahCount <= 0 || startAyah <= 0) continue
-                for (ayah in 1..ayahCount) {
-                    val globalAyah = startAyah + ayah - 1
-                    add(Track(
-                        id = "alfurqan:$reciterId:$number:$ayah",
-                        title = "${surah.optString("transliteration", "Surah $number")} · Ayah $ayah",
-                        artist = "$reciterName · ${surah.optString("translation")}",
-                        streamUrl = "$AL_FURQAN_BASE/audio/$reciterId/$globalAyah",
-                        isDownloadable = false, language = "Arabic",
-                        contentType = "Quran recitation · individual ayah", tradition = "Quran"
-                    ))
-                    if (size >= 250) return@buildList
-                }
-            }
-        }
-    }
     private suspend fun searchIslamHouse(query: String, language: String, section: String): List<Track> {
         val types = listOf("audios", "books")
         val itemLists = coroutineScope {
