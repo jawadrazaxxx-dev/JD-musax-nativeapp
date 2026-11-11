@@ -1373,11 +1373,15 @@ private fun EmbeddedAudioScreen(url: String, onClose: () -> Unit) {
                     settings.useWideViewPort = true
                     webViewClient = android.webkit.WebViewClient()
                     webChromeClient = android.webkit.WebChromeClient()
+                    tag = safeUrl
                     loadUrl(safeUrl)
                 }
             },
             update = { webView ->
-                if (webView.url != safeUrl) webView.loadUrl(safeUrl)
+                if (webView.tag != safeUrl) {
+                    webView.tag = safeUrl
+                    webView.loadUrl(safeUrl)
+                }
             }
         )
     }
