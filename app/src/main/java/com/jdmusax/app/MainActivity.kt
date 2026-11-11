@@ -577,7 +577,11 @@ private fun JDMusaxApp(
     fun play(track: Track, queue: List<Track>) {
         if (!track.externalUrl.isNullOrBlank()) {
             val host = Uri.parse(track.externalUrl).host.orEmpty()
-            embeddedAudioUrl = if (host == "azadari.media" || host.endsWith(".azadari.media")) track.externalUrl else null
+            if (host == "azadari.media" || host.endsWith(".azadari.media")) {
+                embeddedAudioUrl = track.externalUrl
+            } else {
+                runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
+            }
             return
         }
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
