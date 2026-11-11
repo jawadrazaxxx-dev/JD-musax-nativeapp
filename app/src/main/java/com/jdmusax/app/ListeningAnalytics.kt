@@ -4,6 +4,7 @@ import android.app.DownloadManager
 import android.content.Context
 import android.database.Cursor
 import android.net.Uri
+import android.os.Environment
 import org.json.JSONArray
 import org.json.JSONObject
 import java.time.Instant
@@ -80,8 +81,31 @@ class ListeningChallengeStore(context: Context) {
     }
 }
 
-/** Tracks DownloadManager IDs created by JD musax and exposes only completed files. */
-data class OfflineAudio(val trackId: String, val title: String, val downloadId: Long, val uri: Uri)
+/** DownloadManager entries owned by SHIAudio, including their current transfer state. */
+data class OfflineAudio(
+    val trackId: String,
+    val title: String,
+    val downloadId: Long,
+    val uri: Uri
+)
+
+data class OfflineDownload(
+    val track: Track,
+    val downloadId: Long,
+    val status: Int,
+    val downloadedBytes: Long,
+    val totalBytes: Long,
+    val reason: Int,
+    val uri: Uri?
+) {
+    val isComplete: Boolean get() = status == DownloadManager.STATUS_SUCCESSFUL
+    val isFailed: Boolean get() = status == DownloadManager.STATUS_FAILED
+    val isActive: Boolean get() = status == DownloadManager.STATUS_PENDING ||
+        status == DownloadManager.STATUS_RUNNING || status == DownloadManager.STATUS_PAUSED
+    val progress: Float get() = if (totalBytes > 0L) {
+        (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+    } else 0f
+}
 
 class OfflineAudioStore(context: Context) {
     private val appContext = context.applicationContext
@@ -102,28 +126,68 @@ class OfflineAudioStore(context: Context) {
             put("title", track.title)
             put("artist", track.artist)
             put("artwork", track.artwork ?: "")
+            put("streamUrl", track.streamUrl ?: "")
+            put("language", track.language)
+            put("contentType", track.contentType)
+            put("tradition", track.tradition)
             put("downloadId", downloadId)
         })
         prefs.edit().putString("items", updated.toString()).apply()
     }
 
-    fun completed(): List<OfflineAudio> {
-        val array = runCatching { JSONArray(prefs.getString("items", "[]") ?: "[]") }.getOrDefault(JSONArray())
+    fun all(): List<OfflineDownload> {
+        val array = runCatching { JSONArray(prefs.getString("items", "[]") ?: "[]") }
+            .getOrDefault(JSONArray())
         return buildList {
             for (i in 0 until array.length()) {
                 val item = array.optJSONObject(i) ?: continue
                 val id = item.optLong("downloadId")
-                val query = DownloadManager.Query().setFilterById(id)
-                val cursor: Cursor = manager.query(query) ?: continue
+                if (id <= 0L) continue
+                val cursor = manager.query(DownloadManager.Query().setFilterById(id)) ?: continue
                 cursor.use {
                     if (!it.moveToFirst()) return@use
                     val status = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_STATUS))
-                    if (status != DownloadManager.STATUS_SUCCESSFUL) return@use
-                    val uri = runCatching { manager.getUriForDownloadedFile(id) }.getOrNull() ?: return@use
-                    add(OfflineAudio(item.optString("trackId"), item.optString("title"), id, uri))
+                    val downloaded = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_BYTES_DOWNLOADED_SO_FAR))
+                    val total = it.getLong(it.getColumnIndexOrThrow(DownloadManager.COLUMN_TOTAL_SIZE_BYTES))
+                    val reason = it.getInt(it.getColumnIndexOrThrow(DownloadManager.COLUMN_REASON))
+                    val track = Track(
+                        id = item.optString("trackId"),
+                        title = item.optString("title", "Audio download"),
+                        artist = item.optString("artist", "Unknown artist"),
+                        artwork = item.optString("artwork").ifBlank { null },
+                        streamUrl = item.optString("streamUrl").ifBlank { null },
+                        isDownloadable = true,
+                        language = item.optString("language"),
+                        contentType = item.optString("contentType", "Audiobook"),
+                        tradition = item.optString("tradition", "General")
+                    )
+                    val uri = if (status == DownloadManager.STATUS_SUCCESSFUL) {
+                        runCatching { manager.getUriForDownloadedFile(id) }.getOrNull()
+                    } else null
+                    add(OfflineDownload(track, id, status, downloaded, total, reason, uri))
                 }
             }
-        }
+        }.sortedByDescending { it.downloadId }
+    }
+
+    fun completed(): List<OfflineAudio> = all().filter { it.isComplete }
+        .mapNotNull { item -> item.uri?.let { OfflineAudio(item.track.id, item.track.title, item.downloadId, it) } }
+
+    fun retry(downloadId: Long): Long? {
+        val old = all().firstOrNull { it.downloadId == downloadId && it.isFailed } ?: return null
+        val url = old.track.streamUrl?.takeIf { runCatching { Uri.parse(it).scheme.equals("https", true) }.getOrDefault(false) }
+            ?: return null
+        manager.remove(downloadId)
+        val safeName = old.track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "SHIAudio-audio" }
+        val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
+        val request = DownloadManager.Request(Uri.parse(url))
+            .setTitle(old.track.title)
+            .setDescription("Retrying audio download")
+            .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+            .setDestinationInExternalPublicDir(Environment.DIRECTORY_MUSIC, "SHIAudio/$safeName.$extension")
+        val newId = manager.enqueue(request)
+        remember(old.track, newId)
+        return newId
     }
 
     fun remove(downloadId: Long) {

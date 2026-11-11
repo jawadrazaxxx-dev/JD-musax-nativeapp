@@ -395,6 +395,7 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     LIBRARY("Library", Icons.Default.MenuBook),
     SETTINGS("Settings", Icons.Default.Settings),
     INSIGHTS("Insights", Icons.Default.Insights),
+    DOWNLOADS("Downloads", Icons.Default.Download),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
 
@@ -773,6 +774,11 @@ private fun JDMusaxApp(
                             library.save(saved.toList())
                         },
                         onDownload = onDownload
+                    )
+                    AppTab.DOWNLOADS -> DownloadsScreen(
+                        store = offlineStore,
+                        accent = accent,
+                        onPlayOffline = { track -> play(track, listOf(track)) }
                     )
                     AppTab.SETTINGS -> SettingsScreen(
                         accentName = accentName,
@@ -1205,6 +1211,10 @@ private fun TrackRow(
     onDownload: () -> Unit
 ) {
     val palette = LocalAppPalette.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val externalDownloadUrl = track.streamUrl?.takeIf { url ->
+        runCatching { Uri.parse(url).scheme.equals("https", ignoreCase = true) }.getOrDefault(false)
+    }
     Surface(
         modifier = Modifier.fillMaxWidth().animateContentSize(),
         shape = RoundedCornerShape(16.dp),
@@ -1262,7 +1272,20 @@ private fun TrackRow(
         }
         if (track.isDownloadable) {
             IconButton(onClick = onDownload) {
-                Icon(Icons.Default.Download, contentDescription = "Download", tint = accent)
+                Icon(Icons.Default.Download, contentDescription = "Download for offline listening", tint = accent)
+            }
+            if (externalDownloadUrl != null) {
+                IconButton(onClick = {
+                    val sendIntent = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_SUBJECT, track.title)
+                        putExtra(Intent.EXTRA_TEXT, externalDownloadUrl)
+                    }
+                    val chooser = Intent.createChooser(sendIntent, "Send audio link to downloader")
+                    runCatching { context.startActivity(chooser) }
+                }) {
+                    Icon(Icons.Default.Share, contentDescription = "Send audio link to an external downloader", tint = accent)
+                }
             }
         }
         Icon(if (track.externalUrl != null) Icons.Default.OpenInNew else Icons.Default.PlayCircle, contentDescription = if (track.externalUrl != null) "Open source" else "Play", tint = accent, modifier = Modifier.size(28.dp))
