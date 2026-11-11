@@ -556,6 +556,8 @@ private fun JDMusaxApp(
     // Home / search state (kept here so it survives tab switches)
     var query by remember { mutableStateOf("") }
     var selectedCategory by remember { mutableStateOf("Shia Audiobooks") }
+    var quranReciters by remember { mutableStateOf(emptyList<QuranReciter>()) }
+    var selectedQuranReciterKey by remember { mutableStateOf("") }
     var results by remember { mutableStateOf(emptyList<Track>()) }
     var searching by remember { mutableStateOf(false) }
     var searchError by remember { mutableStateOf<String?>(null) }
@@ -611,7 +613,8 @@ private fun JDMusaxApp(
             searching = true
             searchError = null
             val response = runCatching {
-                if (query.isBlank()) repo.featured(category) else repo.search(query, category)
+                if (category == "Quran") repo.searchQuran(query, selectedQuranReciterKey)
+                else if (query.isBlank()) repo.featured(category) else repo.search(query, category)
             }
             if (requestId == searchGeneration) {
                 response.onSuccess { results = it }
@@ -632,6 +635,20 @@ private fun JDMusaxApp(
                 response.onSuccess { trending = it; trendingLoaded = true }
                     .onFailure { trendingError = it.message ?: "Could not load featured audio" }
                 trendingLoading = false
+            }
+        }
+    }
+
+    LaunchedEffect(selectedCategory) {
+        if (selectedCategory == "Quran") {
+            scope.launch {
+                val available = runCatching { repo.quranReciters() }.getOrDefault(emptyList())
+                quranReciters = available
+                if (selectedQuranReciterKey !in available.map { it.key }) {
+                    selectedQuranReciterKey = available.firstOrNull { it.name.contains("Mishary", true) }?.key
+                        ?: available.firstOrNull()?.key.orEmpty()
+                }
+                runSearch("Quran")
             }
         }
     }
@@ -714,7 +731,10 @@ private fun JDMusaxApp(
                         query = query,
                         onQueryChange = { query = it },
                         category = selectedCategory,
-                        onCategoryChange = { selectedCategory = it; runSearch(it) },
+                        onCategoryChange = { selectedCategory = it; if (it != "Quran") runSearch(it) },
+                        quranReciters = quranReciters,
+                        selectedQuranReciterKey = selectedQuranReciterKey,
+                        onQuranReciterChange = { selectedQuranReciterKey = it; runSearch("Quran") },
                         onSearch = { runSearch() },
                         loading = searching,
                         error = searchError,
@@ -837,12 +857,49 @@ private fun CategoryPicker(selected: String, onSelected: (String) -> Unit, accen
     }
 }
 
+
+@Composable
+private fun QuranReciterPicker(
+    reciters: List<QuranReciter>,
+    selectedKey: String,
+    accent: Color,
+    onSelected: (String) -> Unit
+) {
+    val palette = LocalAppPalette.current
+    var expanded by remember { mutableStateOf(false) }
+    val selected = reciters.firstOrNull { it.key == selectedKey }
+    Box(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        OutlinedButton(
+            onClick = { expanded = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = reciters.isNotEmpty(),
+            colors = ButtonDefaults.outlinedButtonColors(contentColor = palette.text)
+        ) {
+            Icon(Icons.Default.RecordVoiceOver, contentDescription = null, tint = accent)
+            Spacer(Modifier.width(8.dp))
+            Text(selected?.displayName ?: if (reciters.isEmpty()) "Loading full-Quran reciters…" else "Choose reciter", modifier = Modifier.weight(1f), maxLines = 1)
+            Icon(Icons.Default.ExpandMore, contentDescription = "Choose reciter")
+        }
+        DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+            reciters.forEach { reciter ->
+                DropdownMenuItem(
+                    text = { Text(reciter.displayName) },
+                    onClick = { expanded = false; onSelected(reciter.key) }
+                )
+            }
+        }
+    }
+}
+
 @Composable
 private fun HomeScreen(
     query: String,
     onQueryChange: (String) -> Unit,
     category: String,
     onCategoryChange: (String) -> Unit,
+    quranReciters: List<QuranReciter>,
+    selectedQuranReciterKey: String,
+    onQuranReciterChange: (String) -> Unit,
     onSearch: () -> Unit,
     loading: Boolean,
     error: String?,
@@ -871,11 +928,15 @@ private fun HomeScreen(
                 onContinue = { recentTracks.firstOrNull()?.let(onContinue) }
             )
         }
+        if (category == "Quran") {
+            QuranReciterPicker(quranReciters, selectedQuranReciterKey, accent, onQuranReciterChange)
+            Text("Complete Quran · 114 Surahs · Full-chapter audio", color = palette.muted, fontSize = 11.sp, modifier = Modifier.padding(start = 4.dp, bottom = 8.dp))
+        }
         OutlinedTextField(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search books, lectures, authors…") },
+            placeholder = { Text(if (category == "Quran") "Find a Surah by name or number…" else "Search books, lectures, authors…") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onSearch) {
