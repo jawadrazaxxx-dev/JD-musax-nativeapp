@@ -577,7 +577,7 @@ private fun JDMusaxApp(
     fun play(track: Track, queue: List<Track>) {
         if (!track.externalUrl.isNullOrBlank()) {
             val host = Uri.parse(track.externalUrl).host.orEmpty()
-            if (host == "azadari.media" || host.endsWith(".azadari.media")) {
+            if (host == "azadari.media" || host.endsWith(".azadari.media") || host == "rawda.app" || host.endsWith(".rawda.app")) {
                 embeddedAudioUrl = track.externalUrl
             } else {
                 runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
@@ -1346,7 +1346,7 @@ private fun EmbeddedAudioScreen(url: String, onClose: () -> Unit) {
     val palette = LocalAppPalette.current
     val safeUrl = url.takeIf {
         val host = Uri.parse(it).host.orEmpty()
-        host == "azadari.media" || host.endsWith(".azadari.media")
+        host == "azadari.media" || host.endsWith(".azadari.media") || host == "rawda.app" || host.endsWith(".rawda.app")
     } ?: "https://azadari.media"
     Column(Modifier.fillMaxSize().background(palette.background)) {
         Row(
