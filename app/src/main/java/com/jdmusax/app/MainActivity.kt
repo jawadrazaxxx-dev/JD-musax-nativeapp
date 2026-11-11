@@ -572,9 +572,12 @@ private fun JDMusaxApp(
 
     val context = androidx.compose.ui.platform.LocalContext.current
 
+    var embeddedAudioUrl by remember { mutableStateOf<String?>(null) }
+
     fun play(track: Track, queue: List<Track>) {
         if (!track.externalUrl.isNullOrBlank()) {
-            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(track.externalUrl))) }
+            val host = Uri.parse(track.externalUrl).host.orEmpty()
+            embeddedAudioUrl = if (host == "azadari.media" || host.endsWith(".azadari.media")) track.externalUrl else null
             return
         }
         val safeQueue = (queue.ifEmpty { listOf(track) }).distinctBy { it.id }
@@ -664,6 +667,7 @@ private fun JDMusaxApp(
         }
     }
 
+    BackHandler(enabled = embeddedAudioUrl != null) { embeddedAudioUrl = null }
     BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
 
     MaterialTheme(
@@ -697,7 +701,9 @@ private fun JDMusaxApp(
             }
         ) { padding ->
             Box(Modifier.fillMaxSize().padding(padding)) {
-                if (tab == AppTab.PLAYER && nowPlaying != null) {
+                if (embeddedAudioUrl != null) {
+                    EmbeddedAudioScreen(url = embeddedAudioUrl!!, onClose = { embeddedAudioUrl = null })
+                } else if (tab == AppTab.PLAYER && nowPlaying != null) {
                     NowPlayingScreen(
                         track = nowPlaying!!, queue = playbackQueue, currentIndex = playbackIndex,
                         isPlaying = isPlaying, palette = palette, accent = accent, audioTheme = audioTheme, speed = playbackSpeed,
@@ -1328,6 +1334,48 @@ private fun TrackRow(
         }
         Icon(if (track.externalUrl != null) Icons.Default.OpenInNew else Icons.Default.PlayCircle, contentDescription = if (track.externalUrl != null) "Open source" else "Play", tint = accent, modifier = Modifier.size(28.dp))
     }
+    }
+}
+
+@Composable
+private fun EmbeddedAudioScreen(url: String, onClose: () -> Unit) {
+    val palette = LocalAppPalette.current
+    val safeUrl = url.takeIf {
+        val host = Uri.parse(it).host.orEmpty()
+        host == "azadari.media" || host.endsWith(".azadari.media")
+    } ?: "https://azadari.media"
+    Column(Modifier.fillMaxSize().background(palette.background)) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onClose) {
+                Icon(Icons.Default.ArrowBack, contentDescription = "Back", tint = palette.text)
+            }
+            Column(Modifier.weight(1f)) {
+                Text("SHIAudio · Official audio", color = palette.text, fontWeight = FontWeight.SemiBold)
+                Text("Playing inside SHIAudio", color = palette.muted, fontSize = 11.sp)
+            }
+            Icon(Icons.Default.Headphones, contentDescription = null, tint = palette.muted)
+        }
+        androidx.compose.ui.viewinterop.AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { viewContext ->
+                android.webkit.WebView(viewContext).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    settings.mediaPlaybackRequiresUserGesture = true
+                    settings.loadWithOverviewMode = true
+                    settings.useWideViewPort = true
+                    webViewClient = android.webkit.WebViewClient()
+                    webChromeClient = android.webkit.WebChromeClient()
+                    loadUrl(safeUrl)
+                }
+            },
+            update = { webView ->
+                if (webView.url != safeUrl) webView.loadUrl(safeUrl)
+            }
+        )
     }
 }
 
