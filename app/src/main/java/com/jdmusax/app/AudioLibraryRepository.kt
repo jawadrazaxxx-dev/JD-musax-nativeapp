@@ -133,6 +133,8 @@ class AudioLibraryRepository {
             "Manqabat" -> "manqabat"
             "Marsiya" -> "marsiya"
             "Majalis" -> "majlis"
+            "Dua" -> "dua"
+            "Ziarat" -> "ziaraat"
             "Duas & Ziyarat" -> "dua"
             else -> "ziaraat"
         }
@@ -259,7 +261,7 @@ class AudioLibraryRepository {
 
     companion object {
         // Only this tab is intentionally a provider directory. Quran has a live catalogue adapter below.
-        private val SHIA_AUDIO_CATEGORIES = setOf("Nohay", "Marsiya", "Manqabat", "Majalis", "Duas & Ziyarat")
+        private val SHIA_AUDIO_CATEGORIES = setOf("Nohay", "Marsiya", "Manqabat", "Majalis", "Dua", "Ziarat", "Duas & Ziyarat")
         private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Audiobooks", "Tafseer", "Shia Podcasts")
         private const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
     }
