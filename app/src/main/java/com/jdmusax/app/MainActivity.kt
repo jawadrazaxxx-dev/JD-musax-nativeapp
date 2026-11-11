@@ -395,6 +395,7 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     LIBRARY("Library", Icons.Default.MenuBook),
     SETTINGS("Settings", Icons.Default.Settings),
     INSIGHTS("Insights", Icons.Default.Insights),
+    DOWNLOADS("Downloads", Icons.Default.Download),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
 
@@ -773,6 +774,11 @@ private fun JDMusaxApp(
                             library.save(saved.toList())
                         },
                         onDownload = onDownload
+                    )
+                    AppTab.DOWNLOADS -> DownloadsScreen(
+                        store = offlineStore,
+                        accent = accent,
+                        onPlayOffline = { track -> play(track, listOf(track)) }
                     )
                     AppTab.SETTINGS -> SettingsScreen(
                         accentName = accentName,
