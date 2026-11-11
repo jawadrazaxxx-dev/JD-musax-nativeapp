@@ -139,7 +139,7 @@ class AudioLibraryRepository {
         val categoryUrl = "https://azadari.media/category/" + slug
         val html = runCatching { getHtml(categoryUrl) }.getOrDefault("")
         val anchorPattern = Regex(
-            """<a\\b([^>]*?href=["']([^"']+)["'][^>]*)>(.*?)</a>""",
+            """<a\b([^>]*?href=["']([^"']+)["'][^>]*)>(.*?)</a>""",
             setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
         )
         val allowedPath = Regex("""^/(?:nauha|noha|manqabat|marsiya|majlis|dua|ziaraat)/[^/?#]+""", RegexOption.IGNORE_CASE)
@@ -203,7 +203,7 @@ class AudioLibraryRepository {
         val patterns = listOf(
             Regex("""<audio[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
             Regex("""<source[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
-            Regex(""""(?:audioUrl|audio_url|streamUrl|stream_url)"\\s*:\\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+            Regex(""""(?:audioUrl|audio_url|streamUrl|stream_url)"\s*:\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
         )
         for (pattern in patterns) {
             val raw = pattern.find(html)?.groupValues?.getOrNull(1)?.replace("&amp;", "&")
