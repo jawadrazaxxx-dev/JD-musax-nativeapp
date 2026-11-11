@@ -101,8 +101,11 @@ class AudioLibraryRepository {
                 surah.optString("translation").contains(normalized, true) || surah.optString("name").contains(normalized, true) ||
                 reciterName.contains(normalized, true) || reciterId.contains(normalized, true)
         }
+        // The default Quran screen intentionally opens with the first four complete surahs.
+        // Searching by surah name or reciter can still return the full matching catalogue.
+        val surahsToLoad = if (normalized.isBlank()) matchingSurahs.take(4) else matchingSurahs
         return buildList {
-            for (surah in matchingSurahs) {
+            for (surah in surahsToLoad) {
                 val number = surah.optInt("number")
                 val ayahCount = surah.optInt("ayahCount")
                 val startAyah = surah.optInt("startAyah", 0)
@@ -117,7 +120,6 @@ class AudioLibraryRepository {
                         isDownloadable = false, language = "Arabic",
                         contentType = "Quran recitation · individual ayah", tradition = "Quran"
                     ))
-                    if (size >= 250) return@buildList
                 }
             }
         }
