@@ -54,6 +54,8 @@ class AudioLibraryRepository {
             AudioSource("Kashana-e-Baseerat", "Urdu Islamic audio literature and educational resources", "https://www.kashanaebaseerat.org/", setOf("Shia Audiobooks", "Quran", "Tafseer", "Duas & Ziyarat")),
             AudioSource("Rawda", "Shia latmiyat, nohay, marsiya, Quran, duas and lectures", "https://rawda.app/", setOf("Nohay", "Marsiya", "Quran", "Duas & Ziyarat", "Majalis", "Manqabat")),
             AudioSource("Azadari Media", "Nohay, manqabat, marsiya and majlis audio", "https://azadari.media/", setOf("Nohay", "Marsiya", "Majalis", "Manqabat")),
+            AudioSource("ShiaTunes", "Shia archive with nohay, marsiya, manqabat, majalis, duas, ziyarat and Quran sections", "https://www.shiatunes.com/", setOf("Nohay", "Marsiya", "Majalis", "Manqabat", "Duas & Ziyarat", "Quran", "Shia Podcasts")),
+            AudioSource("Karbala Connect", "Shia community audio including nohay, marsiya, bayans, majalis and podcasts", "https://karbalaconnect.in/", setOf("Nohay", "Marsiya", "Majalis", "Shia Podcasts")),
             AudioSource("Nauha Diary · Azadari Media", "Nauha and marsiya lyrics and reciter discovery", "https://nauhadiary.com/azadari-media", setOf("Nohay", "Marsiya")),
             AudioSource("ShiaViews", "Shia Quran, majalis, lectures and Islamic lessons", "https://www.shiaviews.com/", setOf("Quran", "Tafseer", "Majalis")),
             AudioSource("ShiaRise Media", "Podcasts, Quran recitations, duas and latmiyat", "https://shiarise.org/media-explore/", setOf("Nohay", "Quran", "Duas & Ziyarat", "Shia Podcasts")),
