@@ -138,7 +138,22 @@ class AudioLibraryRepository {
             "Duas & Ziyarat" -> "dua"
             else -> "ziaraat"
         }
-        val categoryUrl = "https://azadari.media/category/" + slug
+        // Azadari Media exposes dedicated category pages for the other sections.
+        // Its Marsiya content is grouped under Latmiyat on Rawda, so open Rawda's
+        // official in-app catalogue rather than inventing a non-existent route.
+        val categoryUrl = if (section == "Marsiya") "https://rawda.app/" else "https://azadari.media/category/" + slug
+        if (section == "Marsiya") {
+            return listOf(Track(
+                id = "rawda:marsiya",
+                title = "Marsiya · Browse recitations",
+                artist = "Rawda · Official Shia audio catalogue",
+                contentType = section,
+                language = "Urdu / Arabic / Farsi",
+                tradition = "Shia",
+                externalUrl = categoryUrl,
+                isDownloadable = false
+            ))
+        }
         val html = runCatching { getHtml(categoryUrl) }.getOrDefault("")
         val anchorPattern = Regex(
             """<a\b([^>]*?href=["']([^"']+)["'][^>]*)>(.*?)</a>""",
