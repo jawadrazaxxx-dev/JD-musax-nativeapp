@@ -844,7 +844,7 @@ private fun JDMusaxApp(
 
 private val musicCategories = listOf(
     "Shia Audiobooks", "Nohay", "Marsiya", "Quran", "Tafseer",
-    "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts"
+    "Majalis", "Dua", "Ziarat", "Manqabat", "Shia Podcasts"
 )
 
 @Composable
