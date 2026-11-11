@@ -32,6 +32,7 @@ class AudioLibraryRepository {
 
     suspend fun search(query: String, section: String): List<Track> = withContext(Dispatchers.IO) {
         if (section == "Quran") return@withContext searchQuran(query, "")
+        if (section in SHIA_AUDIO_CATEGORIES) return@withContext searchAzadariMedia(query.trim(), section)
         if (section in AUDIO_SOURCE_CATEGORIES) return@withContext sourceDirectory(query, section)
         if (section == "General Audiobooks") {
             val providers = coroutineScope {
@@ -121,6 +122,111 @@ class AudioLibraryRepository {
         return parsed
     }
 
+    /**
+     * Loads category catalogues from Azadari Media. Track pages are opened in an
+     * in-app WebView when the publisher does not expose a stable direct audio URL.
+     * Direct audio URLs are handed to Media3 when the page publishes one.
+     */
+    private suspend fun searchAzadariMedia(query: String, section: String): List<Track> {
+        val slug = when (section) {
+            "Nohay" -> "nohay"
+            "Manqabat" -> "manqabat"
+            "Marsiya" -> "marsiya"
+            "Majalis" -> "majlis"
+            "Duas & Ziyarat" -> "dua"
+            else -> "ziaraat"
+        }
+        val categoryUrl = "https://azadari.media/category/" + slug
+        val html = runCatching { getHtml(categoryUrl) }.getOrDefault("")
+        val anchorPattern = Regex(
+            """<a\\b([^>]*?href=["']([^"']+)["'][^>]*)>(.*?)</a>""",
+            setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL)
+        )
+        val allowedPath = Regex("""^/(?:nauha|noha|manqabat|marsiya|majlis|dua|ziaraat)/[^/?#]+""", RegexOption.IGNORE_CASE)
+        val discovered = anchorPattern.findAll(html).mapNotNull { match ->
+            val attrs = match.groupValues[1]
+            val href = match.groupValues[2].replace("&amp;", "&")
+            val absolute = when {
+                href.startsWith("https://azadari.media/") -> href
+                href.startsWith("/") -> "https://azadari.media" + href
+                else -> return@mapNotNull null
+            }
+            val path = runCatching { android.net.Uri.parse(absolute).path.orEmpty() }.getOrDefault("")
+            if (!allowedPath.containsMatchIn(path)) return@mapNotNull null
+            val inner = match.groupValues[3].replace(Regex("<[^>]+>"), " ")
+                .replace(Regex("\\s+"), " ").trim()
+            val titleAttr = Regex("""(?:title|aria-label)=["']([^"']+)["']""", RegexOption.IGNORE_CASE)
+                .find(attrs)?.groupValues?.get(1).orEmpty()
+            val title = (inner.ifBlank { titleAttr }).replace("&amp;", "&").replace("&#39;", "'")
+                .replace("&quot;", "\"").trim()
+            if (title.isBlank() || title.length < 3) return@mapNotNull null
+            absolute to title
+        }.distinctBy { it.first }.filter { (_, title) ->
+            query.isBlank() || title.contains(query, ignoreCase = true)
+        }.take(30).toList()
+
+        if (discovered.isEmpty()) {
+            // Keep the category usable even if the provider changes its page markup:
+            // the official category page itself is still opened inside SHIAudio.
+            return listOf(Track(
+                id = "azadari:category:" + slug,
+                title = section + " · Browse audio",
+                artist = "Azadari Media · Official catalogue",
+                contentType = section,
+                language = "Urdu / Arabic / Farsi",
+                tradition = "Shia",
+                externalUrl = categoryUrl,
+                isDownloadable = false
+            ))
+        }
+
+        return coroutineScope {
+            discovered.map { (pageUrl, title) -> async {
+                val detailHtml = runCatching { getHtml(pageUrl) }.getOrDefault("")
+                val directAudio = extractDirectAudioUrl(detailHtml)
+                Track(
+                    id = "azadari:" + pageUrl.substringAfter("azadari.media/"),
+                    title = title,
+                    artist = "Azadari Media",
+                    streamUrl = directAudio,
+                    externalUrl = if (directAudio == null) pageUrl else null,
+                    isDownloadable = false,
+                    language = "Urdu / Arabic / Farsi",
+                    contentType = section,
+                    tradition = "Shia"
+                )
+            } }.awaitAll()
+        }
+    }
+
+    private fun extractDirectAudioUrl(html: String): String? {
+        val patterns = listOf(
+            Regex("""<audio[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex("""<source[^>]+src=["']([^"']+)["']""", RegexOption.IGNORE_CASE),
+            Regex(""""(?:audioUrl|audio_url|streamUrl|stream_url)"\\s*:\\s*"([^"]+)"""", RegexOption.IGNORE_CASE)
+        )
+        for (pattern in patterns) {
+            val raw = pattern.find(html)?.groupValues?.getOrNull(1)?.replace("&amp;", "&")
+                ?.replace("\\/", "/") ?: continue
+            if (raw.startsWith("https://") &&
+                raw.substringBefore("?").lowercase().let { it.endsWith(".mp3") || it.endsWith(".m4a") || it.endsWith(".aac") || it.endsWith(".ogg") }) {
+                return raw
+            }
+        }
+        return null
+    }
+
+    private fun getHtml(url: String): String {
+        val request = Request.Builder().url(url)
+            .header("Accept", "text/html,application/xhtml+xml")
+            .header("User-Agent", "SHIAudio/1.0 (Android)")
+            .build()
+        client.newCall(request).execute().use { response ->
+            if (!response.isSuccessful) error("Azadari Media returned HTTP " + response.code)
+            return response.body?.string().orEmpty()
+        }
+    }
+
     private data class AudioSource(val name: String, val description: String, val url: String, val categories: Set<String>, val language: String = "Urdu / English")
 
     private fun sourceDirectory(query: String, section: String): List<Track> {
@@ -153,7 +259,8 @@ class AudioLibraryRepository {
 
     companion object {
         // Only this tab is intentionally a provider directory. Quran has a live catalogue adapter below.
-        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Audiobooks", "Nohay", "Marsiya", "Tafseer", "Majalis", "Duas & Ziyarat", "Manqabat", "Shia Podcasts")
+        private val SHIA_AUDIO_CATEGORIES = setOf("Nohay", "Marsiya", "Manqabat", "Majalis", "Duas & Ziyarat")
+        private val AUDIO_SOURCE_CATEGORIES = setOf("Shia Audiobooks", "Tafseer", "Shia Podcasts")
         private const val ISLAMHOUSE_BASE = "https://api3.islamhouse.com/v3/paV29H2gm56kvLPy"
     }
 
