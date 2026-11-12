@@ -406,9 +406,9 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     EXPLORE("Discover", Icons.Default.Explore),
     LIBRARY("Library", Icons.Default.MenuBook),
+    DOWNLOADS("Downloads", Icons.Default.Download),
     SETTINGS("Settings", Icons.Default.Settings),
     INSIGHTS("Insights", Icons.Default.Insights),
-    DOWNLOADS("Downloads", Icons.Default.Download),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
 
