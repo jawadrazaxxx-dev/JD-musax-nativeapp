@@ -406,9 +406,9 @@ private enum class AppTab(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     EXPLORE("Discover", Icons.Default.Explore),
     LIBRARY("Library", Icons.Default.MenuBook),
+    DOWNLOADS("Downloads", Icons.Default.Download),
     SETTINGS("Settings", Icons.Default.Settings),
     INSIGHTS("Insights", Icons.Default.Insights),
-    DOWNLOADS("Downloads", Icons.Default.Download),
     PLAYER("Player", Icons.Default.GraphicEq)
 }
 
@@ -449,6 +449,7 @@ private fun JDMusaxApp(
     var appearanceMode by remember { mutableStateOf(settings.getAppearanceMode()) }
     var artworkAccent by remember { mutableStateOf<Color?>(null) }
     val fixedAccent = when (accentName) {
+        "gold" -> ShiaudioDesign.gold
         "blue" -> Color(0xFF80BFFF)
         "cyan" -> Color(0xFF62D9E8)
         "teal" -> Color(0xFF55C7B3)
@@ -465,9 +466,9 @@ private fun JDMusaxApp(
     }
     val accent = if (dynamicTheme) artworkAccent ?: fixedAccent else fixedAccent
     val palette = when (appearanceMode) {
-        "light" -> AppPalette(Color(0xFFF5F5F8), Color.White, Color(0xFFECECF2), Color(0xFF17171D), Color(0xFF686875), Color(0xFFD8D8E0))
-        "amoled" -> AppPalette(Color.Black, Color.Black, Color(0xFF101014), Color.White, Color(0xFFAAAAAF), Color(0xFF29292F))
-        else -> AppPalette(Color(0xFF0D0D10), Color(0xFF151519), Color(0xFF202026), Color.White, Color(0xFFAAAAAF), Color(0xFF303038))
+        "light" -> AppPalette(ShiaudioDesign.ivory, ShiaudioDesign.paper, ShiaudioDesign.ivoryVariant, ShiaudioDesign.ink, ShiaudioDesign.mutedInk, ShiaudioDesign.ivoryBorder)
+        "amoled" -> AppPalette(Color.Black, Color(0xFF050B08), Color(0xFF101A14), Color(0xFFF5F4EC), Color(0xFFA5B2A8), Color(0xFF26352C))
+        else -> AppPalette(ShiaudioDesign.emeraldNight, ShiaudioDesign.emeraldSurface, ShiaudioDesign.emeraldRaised, ShiaudioDesign.warmWhite, ShiaudioDesign.sageMuted, ShiaudioDesign.emeraldBorder)
     }
     val scope = rememberCoroutineScope()
     val appContext = androidx.compose.ui.platform.LocalContext.current
@@ -662,34 +663,75 @@ private fun JDMusaxApp(
         }
     }
 
-    BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
+    BackHandler(enabled = tab == AppTab.PLAYER || tab == AppTab.INSIGHTS) {
+        tab = if (tab == AppTab.INSIGHTS) AppTab.LIBRARY else AppTab.HOME
+    }
 
     MaterialTheme(
         colorScheme = if (appearanceMode == "light") {
-            lightColorScheme(primary = accent, onPrimary = Color.White, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+            lightColorScheme(primary = accent, onPrimary = ShiaudioDesign.emeraldNight, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
         } else {
-            darkColorScheme(primary = accent, onPrimary = Color.Black, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+            darkColorScheme(primary = accent, onPrimary = ShiaudioDesign.emeraldNight, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
         }
     ) {
       CompositionLocalProvider(LocalAppPalette provides palette) {
         Scaffold(
             containerColor = palette.background,
             bottomBar = {
-                NavigationBar(containerColor = palette.surface) {
-                    AppTab.values().filter { it != AppTab.PLAYER }.forEach { t ->
-                        NavigationBarItem(
-                            selected = tab == t,
-                            onClick = { tab = t },
-                            icon = { Icon(t.icon, contentDescription = null) },
-                            label = { Text(t.label) },
-                            colors = NavigationBarItemDefaults.colors(
-                                selectedIconColor = if (appearanceMode == "light") Color.White else Color.Black,
-                                selectedTextColor = accent,
-                                indicatorColor = accent,
-                                unselectedIconColor = palette.muted,
-                                unselectedTextColor = palette.muted
+                Column {
+                    nowPlaying?.takeIf { tab != AppTab.PLAYER }?.let { miniTrack ->
+                        val miniProgress = if (durationMs > 0L) (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f) else 0f
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 5.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            color = palette.surfaceVariant,
+                            tonalElevation = 2.dp
+                        ) {
+                            Column {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().clickable { tab = AppTab.PLAYER }.padding(start = 9.dp, end = 4.dp, top = 7.dp, bottom = 6.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(Modifier.size(44.dp).clip(RoundedCornerShape(11.dp)).background(palette.surface), contentAlignment = Alignment.Center) {
+                                        if (!miniTrack.artwork.isNullOrBlank()) {
+                                            AsyncImage(model = miniTrack.artwork, contentDescription = "Now playing artwork", modifier = Modifier.fillMaxSize())
+                                        } else {
+                                            Icon(Icons.Default.GraphicEq, contentDescription = null, tint = accent)
+                                        }
+                                    }
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        Text(miniTrack.title, color = palette.text, maxLines = 1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                                        Text(miniTrack.artist, color = palette.muted, maxLines = 1, fontSize = 11.sp)
+                                    }
+                                    IconButton(onClick = onPrevious) { Icon(Icons.Default.SkipPrevious, contentDescription = "Previous", tint = palette.text) }
+                                    IconButton(onClick = onToggle) {
+                                        Icon(if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow, contentDescription = if (isPlaying) "Pause" else "Play", tint = accent)
+                                    }
+                                    IconButton(onClick = onNext) { Icon(Icons.Default.SkipNext, contentDescription = "Next", tint = palette.text) }
+                                }
+                                Box(Modifier.fillMaxWidth().height(3.dp).background(palette.border)) {
+                                    Box(Modifier.fillMaxWidth(miniProgress).fillMaxHeight().background(accent))
+                                }
+                            }
+                        }
+                    }
+                    NavigationBar(containerColor = palette.surface, tonalElevation = 0.dp) {
+                        AppTab.values().filter { it != AppTab.PLAYER && it != AppTab.INSIGHTS }.forEach { t ->
+                            NavigationBarItem(
+                                selected = tab == t,
+                                onClick = { tab = t },
+                                icon = { Icon(t.icon, contentDescription = null) },
+                                label = { Text(t.label) },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = Color(0xFF18372D),
+                                    selectedTextColor = accent,
+                                    indicatorColor = accent,
+                                    unselectedIconColor = palette.muted,
+                                    unselectedTextColor = palette.muted
+                                )
                             )
-                        )
+                        }
                     }
                 }
             }
@@ -772,6 +814,7 @@ private fun JDMusaxApp(
                     AppTab.LIBRARY -> LibraryScreen(
                         tracks = saved.toList(),
                         bookmarkTracks = bookmarkTracks,
+                        onOpenInsights = { tab = AppTab.INSIGHTS },
                         recentTracks = recentTracks,
                         mostPlayedTracks = mostPlayedTracks,
                         playlists = playlists,
@@ -881,7 +924,37 @@ private fun HomeScreen(
     val palette = LocalAppPalette.current
     val dailyMix = (mostPlayedTracks.take(8) + recentTracks).distinctBy { it.id }.take(12)
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
-        ScreenHeader("SHIAudio", "SHIA AUDIO • QURAN • AZADARI")
+        ScreenHeader("SHIAudio", "LISTEN • REFLECT • REMEMBER")
+        Box(
+            Modifier.fillMaxWidth().height(148.dp).clip(RoundedCornerShape(26.dp))
+                .background(Brush.linearGradient(listOf(ShiaudioDesign.emeraldCardStart, ShiaudioDesign.emeraldCardEnd)))
+                .padding(18.dp)
+        ) {
+            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.SpaceBetween) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.AutoAwesome, contentDescription = null, tint = ShiaudioDesign.gold)
+                    Spacer(Modifier.width(7.dp))
+                    Text("A MOMENT OF REFLECTION", color = ShiaudioDesign.gold, fontSize = 10.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Bold)
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text("Keep the remembrance close.", color = Color(0xFFF7F2E6), fontSize = 21.sp, fontWeight = FontWeight.Bold)
+                    Text("Explore Quran, supplications and the words of Ahlulbayt (AS).", color = Color(0xFFD4E0D7), fontSize = 12.sp, maxLines = 2)
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                    TextButton(onClick = { onCategoryChange("Quran") }) {
+                        Text("Explore Quran", color = ShiaudioDesign.gold, fontWeight = FontWeight.SemiBold)
+                        Spacer(Modifier.width(4.dp))
+                        Icon(Icons.Default.ArrowForward, contentDescription = null, tint = ShiaudioDesign.gold, modifier = Modifier.size(16.dp))
+                    }
+                }
+            }
+        }
+        Spacer(Modifier.height(10.dp))
+        LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(bottom = 8.dp)) {
+            items(musicCategories, key = { it }) { item ->
+                FilterChip(selected = category == item, onClick = { onCategoryChange(item) }, label = { Text(item, maxLines = 1, fontSize = 11.sp) })
+            }
+        }
         if (dailyMix.isNotEmpty()) {
             HomeListeningHighlights(
                 recentTrack = recentTracks.firstOrNull(),
@@ -896,7 +969,7 @@ private fun HomeScreen(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            placeholder = { Text("Search books, lectures, authors…") },
+            placeholder = { Text("Search Quran, Nohay, Majalis, books…") },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
             trailingIcon = {
                 IconButton(onClick = onSearch) {
@@ -920,7 +993,7 @@ private fun HomeScreen(
                 error = error,
                 tracks = tracks,
                 emptyTitle = "Find something meaningful to hear.",
-                emptySubtitle = "Search audiobooks, Islamic lectures, and authors.",
+                emptySubtitle = "Search recitations, Nohay, Marsiya, Majalis and audiobooks.",
                 accent = accent,
                 savedIds = savedIds,
                 onPlay = onPlay,
@@ -1029,6 +1102,7 @@ private fun ExploreScreen(
 private fun LibraryScreen(
     tracks: List<Track>,
     bookmarkTracks: List<Track>,
+    onOpenInsights: () -> Unit,
     recentTracks: List<Track>,
     mostPlayedTracks: List<Track>,
     playlists: List<AudioPlaylist>,
@@ -1072,6 +1146,7 @@ private fun LibraryScreen(
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) { ScreenHeader("Library", "YOUR SAVED AUDIO & LISTENING HISTORY") }
+            IconButton(onClick = onOpenInsights) { Icon(Icons.Default.Insights, contentDescription = "Listening insights", tint = accent) }
             FilledTonalButton(onClick = { picker.launch(arrayOf("audio/*")) }) {
                 Icon(Icons.Default.Add, contentDescription = null)
                 Spacer(Modifier.width(4.dp))

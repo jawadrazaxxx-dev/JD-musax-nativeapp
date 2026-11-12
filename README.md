@@ -92,6 +92,11 @@ Downloads are only offered for catalogue entries marked as downloadable with a s
 
 ### Audio tools and appearance
 
+- **Emerald visual identity:** deep emerald and forest-green surfaces, restrained muted-gold accents, warm ivory light mode, and an OLED-friendly emerald-tinted AMOLED palette.
+- **Hybrid interface:** a reflective Quran-inspired home feature, horizontal category shortcuts, a compact persistent mini-player with artwork and transport controls, and five primary navigation destinations. Listening Insights remains available from the Library screen.
+- **Accessibility-minded contrast:** warm high-contrast text, clear muted labels, rounded touch targets, and consistent surface/border tokens.
+
+
 - **Themes:** Light, Dark, and AMOLED display modes.
 - **Accent colors:** multiple selectable accent palettes.
 - **Artwork colors:** optionally derive the app accent from current artwork.
@@ -143,7 +148,7 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 
    ```bash
    chmod +x ./gradlew
-   ./gradlew assembleDebug --no-daemon
+   ./gradlew testDebugUnitTest assembleDebug --no-daemon
    ```
 
 4. Find the generated APK at:

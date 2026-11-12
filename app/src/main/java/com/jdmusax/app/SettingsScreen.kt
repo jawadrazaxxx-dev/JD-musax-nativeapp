@@ -31,7 +31,7 @@ import androidx.compose.ui.unit.sp
 class SettingsStore(context: Context) {
     private val prefs = context.getSharedPreferences("app_settings", Context.MODE_PRIVATE)
 
-    fun getAccent(): String = prefs.getString("accent", "violet") ?: "violet"
+    fun getAccent(): String = prefs.getString("accent", "gold") ?: "gold"
     fun setAccent(value: String) {
         if (value in ACCENT_OPTIONS) prefs.edit().putString("accent", value).apply()
     }
@@ -48,7 +48,7 @@ class SettingsStore(context: Context) {
 
     companion object {
         val ACCENT_OPTIONS = setOf(
-            "violet", "indigo", "blue", "cyan", "teal", "mint",
+            "gold", "violet", "indigo", "blue", "cyan", "teal", "mint",
             "green", "lime", "yellow", "orange", "red", "rose", "pink"
         )
         val APPEARANCE_MODES = setOf("light", "dark", "amoled")
@@ -57,7 +57,7 @@ class SettingsStore(context: Context) {
 }
 
 private val accentOptions = listOf(
-    "violet" to "Violet", "indigo" to "Indigo", "blue" to "Blue",
+    "gold" to "Gold", "violet" to "Violet", "indigo" to "Indigo", "blue" to "Blue",
     "cyan" to "Cyan", "teal" to "Teal", "mint" to "Mint",
     "green" to "Green", "lime" to "Lime", "yellow" to "Yellow",
     "orange" to "Orange", "red" to "Red", "rose" to "Rose",
@@ -96,6 +96,7 @@ fun SettingsScreen(
         Spacer(Modifier.height(8.dp))
         Text("Settings", fontSize = 30.sp, fontWeight = FontWeight.Black, color = palette.text)
         Text("MAKE SHIAUDIO YOURS", color = palette.muted, fontSize = 10.sp, letterSpacing = 2.sp)
+        Text("Emerald edition · Modern Islamic design", color = palette.muted, fontSize = 12.sp)
 
         Card(
             modifier = Modifier.fillMaxWidth(),
