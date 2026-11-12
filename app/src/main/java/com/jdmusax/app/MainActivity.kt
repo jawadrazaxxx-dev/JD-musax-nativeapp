@@ -6,7 +6,7 @@ import android.content.Intent
 import android.app.DownloadManager
 import android.net.Uri
 import android.os.Environment
-import android.provider.OpenableColumns
+import android.provider.OpenableColumns\nimport android.widget.Toast
 import android.graphics.BitmapFactory
 import androidx.palette.graphics.Palette
 import android.os.Bundle
