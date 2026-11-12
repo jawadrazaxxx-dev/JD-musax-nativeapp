@@ -116,7 +116,6 @@ internal object QuranVerseShare {
             textSize = 35f
             typeface = Typeface.create("sans-serif-medium", Typeface.BOLD)
             textAlign = Paint.Align.CENTER
-            letterSpacing = 0.12f
         }
         canvas.drawText("SHIAUDIO", 540f, 275f, brandPaint)
 
