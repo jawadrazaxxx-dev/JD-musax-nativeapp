@@ -206,6 +206,13 @@ internal object QuranVerseShare {
             }
             canvas.drawText(arabicSurahName, 540f, 1238f, arabicNamePaint)
         }
+        val attributionPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = 0xFF9EADBA.toInt()
+            textSize = 18f
+            typeface = Typeface.create("sans-serif", Typeface.NORMAL)
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("Text: AlQuran Cloud  •  English: Saheeh International  •  Urdu: Fateh Muhammad Jalandhry", 540f, 1284f, attributionPaint)
         return bitmap
     }
 }
