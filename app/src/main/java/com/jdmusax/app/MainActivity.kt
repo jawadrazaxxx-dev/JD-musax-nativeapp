@@ -667,9 +667,9 @@ private fun JDMusaxApp(
 
     MaterialTheme(
         colorScheme = if (appearanceMode == "light") {
-            lightColorScheme(primary = accent, onPrimary = Color.White, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+            lightColorScheme(primary = accent, onPrimary = ShiaudioDesign.emeraldNight, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
         } else {
-            darkColorScheme(primary = accent, onPrimary = Color.Black, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
+            darkColorScheme(primary = accent, onPrimary = ShiaudioDesign.emeraldNight, background = palette.background, surface = palette.surface, onBackground = palette.text, onSurface = palette.text)
         }
     ) {
       CompositionLocalProvider(LocalAppPalette provides palette) {
