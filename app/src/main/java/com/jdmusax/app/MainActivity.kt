@@ -704,6 +704,7 @@ private fun JDMusaxApp(
                         onNext = onNext,
                         onSelectTrack = { skipTo(it) },
                         onQueueEdit = onEditQueue,
+                        onShareVerse = onShareVerse,
                         availableTracks = (results + trending + saved.toList()).distinctBy { it.id },
                         onSpeedChange = { speed -> playbackSpeed = speed; onSpeedChange(speed) },
                         onSleepTimerChange = { sleepMinutes = it },
