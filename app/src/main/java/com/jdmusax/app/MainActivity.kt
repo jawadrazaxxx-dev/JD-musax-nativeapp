@@ -663,7 +663,9 @@ private fun JDMusaxApp(
         }
     }
 
-    BackHandler(enabled = tab == AppTab.PLAYER) { tab = AppTab.HOME }
+    BackHandler(enabled = tab == AppTab.PLAYER || tab == AppTab.INSIGHTS) {
+        tab = if (tab == AppTab.INSIGHTS) AppTab.LIBRARY else AppTab.HOME
+    }
 
     MaterialTheme(
         colorScheme = if (appearanceMode == "light") {
