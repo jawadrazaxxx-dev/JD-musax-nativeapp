@@ -39,7 +39,7 @@ internal object QuranVerseShare {
         val ayahNumber = parts[3].toIntOrNull()?.takeIf { it > 0 } ?: return@withContext null
 
         runCatching {
-            val url = "https://api.alquran.cloud/v1/ayah/$surahNumber:$ayahNumber/editions/quran-uthmani,en.sahih,ur.jalandhry"
+            val url = "https://api.alquran.cloud/v1/ayah/$surahNumber:$ayahNumber/editions/quran-uthmani,en.qarai,ur.jawadi"
             val request = Request.Builder().url(url).header("Accept", "application/json").build()
             val root = client.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) error("Quran text service returned HTTP ${response.code}")
@@ -212,7 +212,7 @@ internal object QuranVerseShare {
             typeface = Typeface.create("sans-serif", Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
         }
-        canvas.drawText("Text: AlQuran Cloud  •  English: Saheeh International  •  Urdu: Fateh Muhammad Jalandhry", 540f, 1284f, attributionPaint)
+        canvas.drawText("Text: AlQuran Cloud  •  English: Ali Quli Qarai  •  Urdu: Syed Zeeshan Haider Jawadi", 540f, 1284f, attributionPaint)
         return bitmap
     }
 }
