@@ -148,7 +148,7 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 
    ```bash
    chmod +x ./gradlew
-   ./gradlew assembleDebug --no-daemon
+   ./gradlew testDebugUnitTest assembleDebug --no-daemon
    ```
 
 4. Find the generated APK at:
