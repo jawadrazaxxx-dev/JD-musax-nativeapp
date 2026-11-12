@@ -6,7 +6,8 @@ import android.content.Intent
 import android.app.DownloadManager
 import android.net.Uri
 import android.os.Environment
-import android.provider.OpenableColumns\nimport android.widget.Toast
+import android.provider.OpenableColumns
+import android.widget.Toast
 import android.graphics.BitmapFactory
 import androidx.palette.graphics.Palette
 import android.os.Bundle
@@ -240,6 +241,17 @@ class MainActivity : ComponentActivity() {
                         val downloadId = (getSystemService(Context.DOWNLOAD_SERVICE) as DownloadManager).enqueue(request)
                         OfflineAudioStore(applicationContext).remember(track, downloadId)
                     }
+                },
+                onShareVerse = { track ->
+                    lifecycleScope.launch {
+                        val imageUri = QuranVerseShare.createShareImageUri(applicationContext, track)
+                        if (imageUri != null) {
+                            val shareIntent = QuranVerseShare.createShareIntent(this@MainActivity, imageUri)
+                            runCatching { startActivity(Intent.createChooser(shareIntent, "Share Quran verse")) }
+                        } else {
+                            Toast.makeText(this@MainActivity, "Could not prepare this verse image. Check your internet connection and try again.", Toast.LENGTH_LONG).show()
+                        }
+                    }
                 }
             )
         }
@@ -420,6 +432,7 @@ private fun JDMusaxApp(
     onPlayQueue: (List<Track>, Int) -> Unit,
     onEditQueue: (List<Track>, Int, Long) -> Unit,
     onDownload: (Track) -> Unit,
+    onShareVerse: (Track) -> Unit,
     onSpeedChange: (Float) -> Unit,
     onCurrentPosition: () -> Long,
     onCurrentDuration: () -> Long,
@@ -1306,6 +1319,7 @@ private fun NowPlayingScreen(
     positionMs: Long, durationMs: Long, onSeekTo: (Long) -> Unit,
     shuffleEnabled: Boolean, repeatMode: Int, onShuffleToggle: () -> Unit, onRepeatCycle: () -> Unit,
     onLyricsChange: (String) -> Unit,
+    onShareVerse: (Track) -> Unit,
     savedProgressMs: Long,
     onSaveProgress: () -> Unit,
     onResumeProgress: () -> Unit
@@ -1347,6 +1361,14 @@ private fun NowPlayingScreen(
         Spacer(Modifier.height(24.dp))
         Text(track.title, color = palette.text, fontSize = 23.sp, fontWeight = FontWeight.Bold, maxLines = 2)
         Text(track.artist, color = palette.muted, fontSize = 15.sp, maxLines = 1)
+        if (track.id.startsWith("alfurqan:")) {
+            FilledTonalButton(onClick = { onShareVerse(track) }) {
+                Icon(Icons.Default.Share, contentDescription = null)
+                Spacer(Modifier.width(6.dp))
+                Text("Share verse as image")
+            }
+            Spacer(Modifier.height(8.dp))
+        }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally)) {
             FilledTonalButton(onClick = onBookmarkToggle) {
                 Icon(if (isBookmarked) Icons.Default.Bookmark else Icons.Default.BookmarkBorder, contentDescription = null)
