@@ -192,7 +192,7 @@ internal object QuranVerseShare {
         val referencePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = 0xFFE2C98E.toInt()
             textSize = 30f
-            typeface = Typeface.create("sans-serif-medium", Typeface.MEDIUM)
+            typeface = Typeface.create("sans-serif-medium", Typeface.NORMAL)
             textAlign = Paint.Align.CENTER
         }
         val reference = "$surahName  •  $surahNumber:$ayahNumber"
