@@ -1153,15 +1153,19 @@ private fun LibraryScreen(
                 Text("Import")
             }
         }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-            Column(Modifier.weight(1f)) {
-                Text("LISTENING SNAPSHOT", color = accent, fontSize = 10.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
-                Text("${recentTracks.size} recent · ${mostPlayedTracks.size} most played · ${tracks.size} favorites", color = palette.muted, fontSize = 11.sp)
-            }
-            FilledTonalButton(onClick = { showCreatePlaylist = true }, enabled = tracks.isNotEmpty()) {
-                Icon(Icons.Default.PlaylistAdd, contentDescription = null)
-                Text("New playlist")
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LibraryStatCard("Favorites", tracks.size, Icons.Default.Favorite, accent, Modifier.weight(1f))
+            LibraryStatCard("Recent", recentTracks.size, Icons.Default.History, accent, Modifier.weight(1f))
+            LibraryStatCard("Bookmarks", bookmarkTracks.size, Icons.Default.Bookmark, accent, Modifier.weight(1f))
+        }
+        FilledTonalButton(
+            onClick = { showCreatePlaylist = true },
+            enabled = tracks.isNotEmpty(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Icon(Icons.Default.PlaylistAdd, contentDescription = null)
+            Spacer(Modifier.width(7.dp))
+            Text("Create a playlist from favorites")
         }
         LazyRow(horizontalArrangement = Arrangement.spacedBy(8.dp), contentPadding = PaddingValues(vertical = 8.dp)) {
             items(listOf("Favorites", "Bookmarks", "Recently played", "Most played")) { collection ->
@@ -1288,6 +1292,31 @@ private fun EmptyState(title: String, subtitle: String) {
         Text(title, color = palette.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
         Spacer(Modifier.height(6.dp))
         Text(subtitle, color = palette.muted)
+    }
+}
+
+@Composable
+private fun LibraryStatCard(
+    label: String,
+    count: Int,
+    icon: ImageVector,
+    accent: Color,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalAppPalette.current
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = palette.surfaceVariant
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp)
+        ) {
+            Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(17.dp))
+            Text(count.toString(), color = palette.text, fontSize = 21.sp, fontWeight = FontWeight.Bold)
+            Text(label, color = palette.muted, fontSize = 11.sp, maxLines = 1)
+        }
     }
 }
 
