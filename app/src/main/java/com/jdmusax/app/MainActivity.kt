@@ -1422,17 +1422,52 @@ private fun NowPlayingScreen(
         }
         Spacer(Modifier.height(16.dp))
         Box(
-            Modifier.fillMaxWidth().weight(1f, fill = false).aspectRatio(1f)
-                .clip(RoundedCornerShape(26.dp)).background(palette.surfaceVariant),
+            modifier = Modifier.fillMaxWidth(),
             contentAlignment = Alignment.Center
         ) {
-            if (!track.artwork.isNullOrBlank()) {
-                AsyncImage(model = track.artwork, contentDescription = "${track.contentType} cover", modifier = Modifier.fillMaxSize())
-            } else {
-                Icon(
-                    if (track.contentType.contains("lecture", true)) Icons.Default.Headphones else Icons.Default.MenuBook,
-                    contentDescription = null, tint = accent, modifier = Modifier.size(72.dp)
-                )
+            Surface(
+                modifier = Modifier.fillMaxWidth().widthIn(max = 360.dp).aspectRatio(1f),
+                shape = RoundedCornerShape(28.dp),
+                color = palette.surfaceVariant,
+                tonalElevation = 8.dp
+            ) {
+                Box(Modifier.fillMaxSize()) {
+                    if (!track.artwork.isNullOrBlank()) {
+                        AsyncImage(
+                            model = track.artwork,
+                            contentDescription = "${track.contentType} cover",
+                            modifier = Modifier.fillMaxSize()
+                        )
+                    } else {
+                        Box(
+                            Modifier.fillMaxSize().background(
+                                Brush.linearGradient(listOf(ShiaudioDesign.emeraldCardStart, ShiaudioDesign.emeraldCardEnd))
+                            ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                if (track.contentType.contains("lecture", true)) Icons.Default.Headphones else Icons.Default.MenuBook,
+                                contentDescription = null,
+                                tint = ShiaudioDesign.gold,
+                                modifier = Modifier.size(76.dp)
+                            )
+                        }
+                    }
+                    Surface(
+                        modifier = Modifier.align(Alignment.BottomEnd).padding(14.dp),
+                        shape = RoundedCornerShape(50),
+                        color = Color(0xCC0B1712)
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 11.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(Icons.Default.GraphicEq, contentDescription = null, tint = ShiaudioDesign.gold, modifier = Modifier.size(14.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text("SHIAUDIO", color = Color(0xFFF3F1E8), fontSize = 9.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.2.sp)
+                        }
+                    }
+                }
             }
         }
         Spacer(Modifier.height(24.dp))
