@@ -1402,6 +1402,7 @@ private fun NowPlayingScreen(
 ) {
     val themeMotion by animateFloatAsState(targetValue = if (isPlaying) 1f else 0.25f, label = "audioThemeMotion")
     val themeColors = when (audioTheme) {
+        "emerald" -> listOf(ShiaudioDesign.emeraldCardStart, ShiaudioDesign.emeraldRaised, palette.background)
         "aurora" -> listOf(Color(0xFF164E63), Color(0xFF312E81), palette.background)
         "neon" -> listOf(Color(0xFF3B0764), Color(0xFF0E7490), palette.background)
         "ocean" -> listOf(Color(0xFF082F49), Color(0xFF155E75), palette.background)
