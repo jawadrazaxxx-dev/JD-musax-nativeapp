@@ -51,5 +51,6 @@ dependencies {
     implementation("com.squareup.okhttp3:okhttp:5.1.0")
         implementation("com.google.guava:guava:33.4.8-android")
     implementation("io.coil-kt:coil-compose:2.7.0")
+    testImplementation("junit:junit:4.13.2")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }

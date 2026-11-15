@@ -4,7 +4,7 @@
 
 The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3 (ExoPlayer)**. Its screens and player are native Android UI—there is no HTML or WebView-based app interface.
 
-> **Project status:** Actively developed. This README describes the implementation on the `feat/playlists-stats-progress-bookmarks` branch and may change as the project evolves. A feature being listed here does not imply that the app is a production release or has been tested on every Android device.
+> **Project status:** Actively developed. The emerald hybrid redesign and Quran sharing/download restoration are under review in pull requests #30 and #31. CI builds and unit tests are run on the feature branch; physical-device validation is still required before release. A listed feature is not a claim of production readiness.
 
 ## Highlights
 
@@ -27,7 +27,7 @@ The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3
 
 ### Discover audio
 
-Discover is organized into nine focused category tabs: Shia Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, and Shia Podcasts. Category tabs appear in Discover only; Home no longer repeats the same horizontal tab strip.
+Discover is organized into nine focused category tabs: Shia Audiobooks, Nohay, Marsiya, Quran, Tafseer, Majalis, Duas & Ziyarat, Manqabat, and Shia Podcasts. Home provides compact category shortcuts for quick access, while Discover retains the full category browsing experience.
 
 The catalogue layer supports several kinds of audio sources:
 
@@ -37,6 +37,7 @@ The catalogue layer supports several kinds of audio sources:
 
 - **Quran and Tafseer:** Al Furqan's live recitation API plus Shia Quran and Tafseer resources.
 - **Al Furqan Quran API** — live Quran catalogue with 114 surahs, individual ayah streams, and reciter selection. Each result is one ayah, not a falsely labelled complete surah.
+- **Share verse as image** — for a currently playing Al-Furqan ayah, generate a 1080×1350 share card with Uthmani Arabic, Ali Quli Qarai English and Syed Zeeshan Haider Jawadi Urdu translations, verse reference, and source credits. The PNG is shared through Android's system Sharesheet.
 - **Shia Podcasts and lectures:** Shia Readers, ShiaViews, ShiaRise, Alwasi TV, Kashana-e-Baseerat, and Al Basheer.
 - **IslamHouse** — Islamic audio and book/audio entries, with language and category filtering.
 
@@ -92,6 +93,11 @@ Downloads are only offered for catalogue entries marked as downloadable with a s
 
 ### Audio tools and appearance
 
+- **Emerald visual identity:** deep emerald and forest-green surfaces, restrained muted-gold accents, warm ivory light mode, and an OLED-friendly emerald-tinted AMOLED palette. Emerald is also available as the dedicated animated Now Playing atmosphere and is the default player atmosphere for new installs.
+- **Hybrid interface:** a reflective Quran-inspired home feature, horizontal category shortcuts, a compact persistent mini-player with artwork and transport controls, and five primary navigation destinations. Listening Insights remains available from the Library screen.
+- **Accessibility-minded contrast:** warm high-contrast text, clear muted labels, rounded touch targets, and consistent surface/border tokens.
+
+
 - **Themes:** Light, Dark, and AMOLED display modes.
 - **Accent colors:** multiple selectable accent palettes.
 - **Artwork colors:** optionally derive the app accent from current artwork.
@@ -143,7 +149,7 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
 
    ```bash
    chmod +x ./gradlew
-   ./gradlew assembleDebug --no-daemon
+   ./gradlew testDebugUnitTest assembleDebug --no-daemon
    ```
 
 4. Find the generated APK at:
@@ -179,6 +185,8 @@ The workflow artifact is a **debug build**, not a signed production release. Rel
 │       │   ├── ListeningInsightsScreen.kt
 │       │   ├── BookmarkStore.kt
 │       │   ├── SettingsScreen.kt
+│       │   ├── ShiaudioDesign.kt
+│       │   ├── QuranVerseShare.kt
 │       │   └── Track.kt
 │       └── AndroidManifest.xml
 ├── .github/workflows/

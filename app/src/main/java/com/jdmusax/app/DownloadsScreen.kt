@@ -86,7 +86,9 @@ internal fun DownloadsScreen(
                                 }
                                 Text(downloadStatus(item.status), color = if (item.isFailed) MaterialTheme.colorScheme.error else accent, fontSize = 11.sp)
                             }
-                            if (item.isActive) {
+                            if (item.status == DownloadManager.STATUS_PAUSED) {
+                                Text("Paused by Android (code ${item.reason}). You can cancel this transfer.", color = palette.muted, fontSize = 11.sp)
+                            } else if (item.isActive) {
                                 if (item.totalBytes > 0L) {
                                     LinearProgressIndicator(
                                         progress = { item.progress },
@@ -105,8 +107,6 @@ internal fun DownloadsScreen(
                                 Text("Download failed (code ${item.reason}). You can retry it.", color = palette.muted, fontSize = 11.sp)
                             } else if (item.isComplete) {
                                 Text("Saved for offline listening · ${formatDownloadBytes(item.totalBytes)}", color = palette.muted, fontSize = 11.sp)
-                            } else if (item.status == DownloadManager.STATUS_PAUSED) {
-                                Text("Android DownloadManager has paused this transfer (code ${item.reason}).", color = palette.muted, fontSize = 11.sp)
                             }
                             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End, verticalAlignment = Alignment.CenterVertically) {
                                 if (item.isComplete && item.uri != null) {

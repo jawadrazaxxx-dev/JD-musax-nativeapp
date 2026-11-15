@@ -179,7 +179,7 @@ class OfflineAudioStore(context: Context) {
             ?: return null
         manager.remove(downloadId)
         val safeName = old.track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "SHIAudio-audio" }
-        val extension = url.substringBefore("?").substringAfterLast('.', "mp3").take(5)
+        val extension = AudioDownloadUtils.extensionFrom(url)
         val request = DownloadManager.Request(Uri.parse(url))
             .setTitle(old.track.title)
             .setDescription("Retrying audio download")
