@@ -18,6 +18,7 @@ class ShiaudioDesignTest {
         assertEquals(Color(0xFFF5F3EA), ShiaudioDesign.ivory)
         assertEquals(Color(0xFFFFFEF8), ShiaudioDesign.paper)
         assertTrue(SettingsStore.ACCENT_OPTIONS.contains("gold"))
+        assertTrue(SettingsStore.AUDIO_THEMES.contains("emerald"))
         assertTrue(SettingsStore.APPEARANCE_MODES.containsAll(setOf("light", "dark", "amoled")))
     }
 }
