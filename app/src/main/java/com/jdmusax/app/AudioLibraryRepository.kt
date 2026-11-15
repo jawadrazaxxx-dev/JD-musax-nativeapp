@@ -116,7 +116,7 @@ class AudioLibraryRepository {
                         title = "${surah.optString("transliteration", "Surah $number")} · Ayah $ayah",
                         artist = "$reciterName · ${surah.optString("translation")}",
                         streamUrl = "$AL_FURQAN_BASE/audio/$reciterId/$globalAyah",
-                        isDownloadable = false, language = "Arabic",
+                        isDownloadable = true, language = "Arabic",
                         contentType = "Quran recitation · individual ayah", tradition = "Quran"
                     ))
                     if (size >= 250) return@buildList
