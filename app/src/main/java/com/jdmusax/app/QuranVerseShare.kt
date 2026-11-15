@@ -97,7 +97,7 @@ internal object QuranVerseShare {
         val canvas = Canvas(bitmap)
         val background = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             shader = LinearGradient(0f, 0f, width.toFloat(), height.toFloat(),
-                intArrayOf(0xFF101B2D.toInt(), 0xFF172D3B.toInt(), 0xFF101722.toInt()),
+                intArrayOf(0xFF0B1712.toInt(), 0xFF174434.toInt(), 0xFF09150F.toInt()),
                 null, Shader.TileMode.CLAMP)
         }
         canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), background)
