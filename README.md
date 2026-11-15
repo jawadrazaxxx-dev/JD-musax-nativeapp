@@ -4,7 +4,7 @@
 
 The app is built with **Kotlin, Jetpack Compose, Material 3, and AndroidX Media3 (ExoPlayer)**. Its screens and player are native Android UI—there is no HTML or WebView-based app interface.
 
-> **Project status:** Actively developed. The emerald hybrid redesign and Quran sharing/download restoration are under review in pull requests #30 and #31. CI builds and unit tests are run on the feature branch; physical-device validation is still required before release. A listed feature is not a claim of production readiness.
+> **Project status:** The Quran download and verse-sharing work and the emerald hybrid redesign have been merged into `main`. Android CI runs unit tests and builds the debug APK. Public nightly APKs are published as GitHub prereleases for community testing; physical-device validation and production signing remain separate release-readiness steps.
 
 ## Highlights
 
@@ -158,9 +158,15 @@ The app's current Gradle configuration uses compile SDK 36 and target SDK 35.
    app/build/outputs/apk/debug/app-debug.apk
    ```
 
+### Download SHIAudio
+
+**[Download the latest SHIAudio APK](https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp/releases/download/nightly/app-debug.apk)**
+
+The latest public build is also listed on the [SHIAudio Nightly release page](https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp/releases/tag/nightly). The APK is a debug build signed with the Android debug key for testing; it is not a production-signed release.
+
 ### Build with GitHub Actions
 
-The repository includes **Android CI** and **Build SHIAudio APK** workflows.
+The **Android CI** workflow runs unit tests, assembles the debug APK, stores a 30-day workflow artifact, and publishes or refreshes the public **SHIAudio Nightly** prerelease whenever a successful build is pushed to `main`.
 
 1. Open the repository's [Actions page](https://github.com/jawadrazaxxx-dev/JD-musax-nativeapp/actions).
 2. Open a completed run for the relevant workflow.
