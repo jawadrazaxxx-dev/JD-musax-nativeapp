@@ -8,7 +8,7 @@ on:
     branches: [main, "feature/**"]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   build:
@@ -36,3 +36,20 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
           if-no-files-found: error
           retention-days: 30
+      - name: Publish public nightly APK release
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          target_commitish: main
+          name: SHIAudio Nightly
+          body: |
+            Public SHIAudio testing build generated from the latest successful main-branch CI run.
+
+            This is a debug APK signed with the Android debug key. It is intended for testing, not as a production-signed release.
+          prerelease: true
+          make_latest: false
+          overwrite_files: true
+          files: app/build/outputs/apk/debug/app-debug.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
