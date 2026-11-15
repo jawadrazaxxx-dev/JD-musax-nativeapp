@@ -231,8 +231,7 @@ class MainActivity : ComponentActivity() {
                     val url = track.streamUrl
                     if (track.isDownloadable && !url.isNullOrBlank() && url.startsWith("https://")) {
                         val safeName = track.title.replace(Regex("[^A-Za-z0-9._ -]"), "_").take(80).ifBlank { "SHIAudio-audio" }
-                        val pathExtension = Uri.parse(url).lastPathSegment?.substringAfterLast('.', "")?.lowercase().orEmpty()
-                        val extension = pathExtension.takeIf { it in setOf("mp3", "m4a", "ogg", "wav", "aac") } ?: "mp3"
+                        val extension = AudioDownloadUtils.extensionFrom(url)
                         val request = DownloadManager.Request(Uri.parse(url))
                             .setTitle(track.title)
                             .setDescription("Downloading audio for offline listening")
